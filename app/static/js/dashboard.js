@@ -188,14 +188,75 @@ async function fetchStats() {
     document.getElementById('logBox').textContent = data.logs.join('\n');
 }
 
+let cachedUsers = [];
+
 async function fetchUsers() {
     const res = await fetch('/api/users');
     const data = await res.json();
+    cachedUsers = data.users || [];
     const tbody = document.getElementById('userTableBody');
     tbody.innerHTML = '';
-    data.users.forEach(u => {
-        tbody.innerHTML += `<tr><td>${u.id}</td><td>${u.username}</td><td><span class="badge bg-secondary">${u.role_name}</span></td><td>${u.created_at}</td><td><button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">Delete</button></td></tr>`;
+    cachedUsers.forEach(u => {
+        let badgeClass = 'bg-secondary';
+        if (u.role_name === 'admin') badgeClass = 'bg-warning text-dark';
+        else if (u.role_name === 'editor') badgeClass = 'bg-info text-dark';
+        else if (u.role_name === 'user') badgeClass = 'bg-primary';
+
+        tbody.innerHTML += `
+            <tr>
+                <td>${u.id}</td>
+                <td><strong>${escapeHtml(u.username)}</strong></td>
+                <td><span class="badge ${badgeClass}">${escapeHtml(u.role_name)}</span></td>
+                <td>${u.created_at}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="openEditUserModal(${u.id})"><i class="bi bi-pencil-square"></i> Edit</button>
+                        <button class="btn btn-outline-danger" onclick="deleteUser(${u.id})"><i class="bi bi-trash"></i> Delete</button>
+                    </div>
+                </td>
+            </tr>`;
     });
+}
+
+function openEditUserModal(userId) {
+    const user = cachedUsers.find(u => u.id === userId);
+    if (!user) return;
+    document.getElementById('editUserId').value = user.id;
+    document.getElementById('editUsername').value = user.username;
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editRole').value = user.role_id;
+    const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+    modal.show();
+}
+
+async function submitEditUser() {
+    const userId = document.getElementById('editUserId').value;
+    const username = document.getElementById('editUsername').value.trim();
+    const password = document.getElementById('editPassword').value;
+    const roleId = document.getElementById('editRole').value;
+
+    const payload = {
+        username: username,
+        role_id: parseInt(roleId)
+    };
+    if (password) {
+        payload.password = password;
+    }
+
+    const res = await fetch(`/api/users/${userId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        const modalEl = document.getElementById('editUserModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+        fetchUsers();
+    } else {
+        alert(data.error || "Failed to update user");
+    }
 }
 
 async function addUser() {

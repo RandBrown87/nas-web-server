@@ -16,7 +16,7 @@ def login():
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
-            "SELECT u.*, r.name as role_name, r.can_read, r.can_write, r.can_delete, r.is_admin "
+            "SELECT u.*, r.name as role_name, r.can_read, r.can_write, r.can_edit, r.can_delete, r.is_admin "
             "FROM users u JOIN roles r ON u.role_id = r.id WHERE u.username = %s", (username,)
         )
         user = cursor.fetchone()
@@ -28,6 +28,7 @@ def login():
             session['username'] = user['username']
             session['is_admin'] = bool(user['is_admin'])
             session['can_write'] = bool(user['can_write'])
+            session['can_edit'] = bool(user.get('can_edit', True))
             session['can_delete'] = bool(user['can_delete'])
             return redirect(url_for('files.index'))
             
