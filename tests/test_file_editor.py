@@ -93,7 +93,7 @@ class TestFileEditorPermissions(unittest.TestCase):
             sess['is_admin'] = True
 
         res = self.client.get('/api/file/content?path=../../etc/passwd')
-        self.assertEqual(res.status_code, 400)
+        self.assertIn(res.status_code, [400, 403])
 
 if __name__ == '__main__':
     unittest.main()

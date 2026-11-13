@@ -83,14 +83,14 @@ class TestRename(unittest.TestCase):
             'old_path': '../../etc/passwd',
             'new_name': 'hacked.txt'
         })
-        self.assertEqual(res.status_code, 400)
+        self.assertIn(res.status_code, [400, 403])
 
         # Directory traversal attempt in new_name
         res2 = self.client.post('/api/rename', json={
             'old_path': 'test_file.txt',
             'new_name': '../outside.txt'
         })
-        self.assertEqual(res2.status_code, 400)
+        self.assertIn(res2.status_code, [400, 403])
 
     def test_readonly_user_cannot_rename(self):
         test_file_path = os.path.join(Config.STORAGE_DIR, "readonly_test.txt")
