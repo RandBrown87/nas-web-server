@@ -52,6 +52,7 @@ async function fetchFiles() {
             <td>
                 <div class="btn-group btn-group-sm">
                     ${!item.is_dir ? `<a href="/api/download?path=${encodeURIComponent(filePath)}" class="btn btn-sm btn-outline-success" title="Download"><i class="bi bi-download"></i></a>` : ''}
+                    <button class="btn btn-sm btn-outline-primary" onclick="openRenameModal('${encodeURIComponent(item.name)}')" title="Rename"><i class="bi bi-pencil"></i></button>
                     ${toggleVisibilityBtn}
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteItem('${encodeURIComponent(item.name)}')" title="Delete"><i class="bi bi-trash"></i></button>
                 </div>
@@ -124,6 +125,38 @@ async function createFolder() {
         body: JSON.stringify({ path: currentPath, folder_name: name, is_private: isPrivate })
     });
     fetchFiles();
+}
+
+function openRenameModal(encodedName) {
+    const name = decodeURIComponent(encodedName);
+    const target = currentPath ? currentPath + '/' + name : name;
+    document.getElementById('renameOldPath').value = target;
+    document.getElementById('renameNewName').value = name;
+    const modal = new bootstrap.Modal(document.getElementById('renameModal'));
+    modal.show();
+}
+
+async function submitRename() {
+    const oldPath = document.getElementById('renameOldPath').value;
+    const newName = document.getElementById('renameNewName').value.trim();
+    if (!newName) {
+        alert("Please enter a new name");
+        return;
+    }
+    const res = await fetch('/api/rename', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ old_path: oldPath, new_name: newName })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        const modalEl = document.getElementById('renameModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+        fetchFiles();
+    } else {
+        alert(data.error || "Rename failed");
+    }
 }
 
 async function deleteItem(encodedName) {

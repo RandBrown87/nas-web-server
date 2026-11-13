@@ -261,3 +261,91 @@ def delete():
     cursor.close()
     conn.close()
     return jsonify({'success': True})
+
+@files_bp.route('/api/rename', methods=['POST'])
+@login_required
+def rename_item():
+    data = request.json or {}
+    old_path = data.get('old_path', '').strip()
+    new_name = data.get('new_name', '').strip()
+
+    if not old_path or not new_name:
+        return jsonify({'error': 'Old path and new name are required'}), 400
+
+    if '/' in new_name or '\\' in new_name or '..' in new_name:
+        return jsonify({'error': 'Invalid new name'}), 400
+
+    sanitized_new_name = secure_filename(new_name)
+    if not sanitized_new_name:
+        return jsonify({'error': 'Invalid new name'}), 400
+
+    try:
+        old_abs = safe_path(old_path)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.exists(old_abs):
+        return jsonify({'error': 'Item not found'}), 404
+
+    parent_dir = os.path.dirname(old_abs)
+    new_abs = os.path.abspath(os.path.join(parent_dir, sanitized_new_name))
+
+    base = os.path.abspath(Config.STORAGE_DIR)
+    if not new_abs.startswith(base):
+        return jsonify({'error': 'Invalid target path'}), 400
+
+    if os.path.exists(new_abs):
+        return jsonify({'error': f"An item named '{sanitized_new_name}' already exists"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (old_abs,))
+    meta = cursor.fetchone()
+    cursor.fetchall()
+
+    is_owner = (meta and meta['uploaded_by'] == session.get('user_id'))
+    if meta and meta.get('is_private') and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Access denied: private item'}), 403
+
+    if not session.get('can_write') and not session.get('is_admin') and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Write permission required'}), 403
+
+    is_dir = os.path.isdir(old_abs)
+
+    try:
+        os.rename(old_abs, new_abs)
+    except Exception as e:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': f'Filesystem rename failed: {str(e)}'}), 500
+
+    if meta:
+        cursor.execute(
+            "UPDATE file_metadata SET filename = %s, file_path = %s WHERE id = %s",
+            (sanitized_new_name, new_abs, meta['id'])
+        )
+    else:
+        file_size = 0 if is_dir else os.path.getsize(new_abs)
+        cursor.execute(
+            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by) VALUES (%s, %s, %s, %s)",
+            (sanitized_new_name, new_abs, file_size, session.get('user_id'))
+        )
+
+    if is_dir:
+        old_prefix = old_abs + '/'
+        new_prefix = new_abs + '/'
+        cursor.execute(
+            "UPDATE file_metadata SET file_path = CONCAT(%s, SUBSTRING(file_path, %s)) WHERE file_path LIKE %s",
+            (new_prefix, len(old_prefix) + 1, old_prefix + '%')
+        )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({'success': True, 'new_name': sanitized_new_name})
+
