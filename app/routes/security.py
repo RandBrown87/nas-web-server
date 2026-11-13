@@ -121,3 +121,37 @@ def quarantine_action(scan_id):
     cursor.close()
     conn.close()
     return jsonify({'error': 'Invalid action'}), 400
+
+@security_bp.route('/api/waf/logs', methods=['GET'])
+@login_required
+@admin_required
+def waf_logs():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT id, ip_address, endpoint, attack_type, payload_sample, blocked_at
+        FROM waf_logs
+        ORDER BY blocked_at DESC
+        LIMIT 50
+    """)
+    logs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify({'waf_logs': logs})
+
+@security_bp.route('/api/waf/stats', methods=['GET'])
+@login_required
+@admin_required
+def waf_stats():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT COUNT(*) as total FROM waf_logs")
+    total = cursor.fetchone()['total']
+
+    cursor.execute("SELECT attack_type, COUNT(*) as count FROM waf_logs GROUP BY attack_type")
+    breakdown = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return jsonify({'total_blocked': total, 'breakdown': breakdown})
+

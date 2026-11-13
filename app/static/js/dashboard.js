@@ -502,6 +502,37 @@ async function fetchSecurityData() {
                 </tr>`;
         });
     }
+
+    // 3. Fetch WAF Logs & Stats
+    const wafRes = await fetch('/api/waf/logs');
+    if (wafRes.ok) {
+        const wafData = await wafRes.json();
+        const tbody = document.getElementById('wafTableBody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            if (!wafData.waf_logs || wafData.waf_logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No suspicious attacks detected yet. NAS is protected.</td></tr>';
+            } else {
+                wafData.waf_logs.forEach(w => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><code>${escapeHtml(w.ip_address)}</code></td>
+                            <td><span class="badge bg-danger">${escapeHtml(w.attack_type)}</span></td>
+                            <td><code>${escapeHtml(w.endpoint)}</code></td>
+                            <td><code class="text-danger small">${escapeHtml(w.payload_sample)}</code></td>
+                            <td>${w.blocked_at}</td>
+                        </tr>`;
+                });
+            }
+        }
+    }
+
+    const wafStatsRes = await fetch('/api/waf/stats');
+    if (wafStatsRes.ok) {
+        const stats = await wafStatsRes.json();
+        const badge = document.getElementById('wafTotalBlockedBadge');
+        if (badge) badge.textContent = `${stats.total_blocked || 0} Blocked`;
+    }
 }
 
 async function runStorageMalwareScan() {

@@ -107,6 +107,9 @@ def create_app():
     app.register_blueprint(backup_bp)
     app.register_blueprint(security_bp)
 
+    from app.waf import init_waf
+    init_waf(app)
+
     with app.app_context():
         init_db()
         try:
