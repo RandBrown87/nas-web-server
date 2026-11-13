@@ -349,3 +349,99 @@ def rename_item():
 
     return jsonify({'success': True, 'new_name': sanitized_new_name})
 
+@files_bp.route('/api/file/content', methods=['GET', 'POST'])
+@login_required
+def file_content():
+    if request.method == 'GET':
+        req_path = request.args.get('path', '')
+        try:
+            target = safe_path(req_path)
+        except ValueError:
+            return jsonify({'error': 'Invalid path'}), 400
+
+        if not os.path.isfile(target):
+            return jsonify({'error': 'File not found'}), 404
+
+        abs_target = os.path.abspath(target)
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_target,))
+        meta = cursor.fetchone()
+        cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        is_owner = (meta and meta['uploaded_by'] == session.get('user_id'))
+        if meta and meta.get('is_private') and not is_owner:
+            return jsonify({'error': 'Access denied: private file'}), 403
+
+        if os.path.getsize(target) > 5 * 1024 * 1024:
+            return jsonify({'error': 'File too large for inline editing (max 5MB)'}), 400
+
+        try:
+            with open(target, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+        except Exception as e:
+            return jsonify({'error': f'Cannot read file: {str(e)}'}), 500
+
+        can_edit = bool(session.get('can_edit') or session.get('is_admin') or is_owner)
+        return jsonify({
+            'path': req_path,
+            'filename': os.path.basename(target),
+            'content': content,
+            'can_edit': can_edit
+        })
+
+    data = request.json or {}
+    req_path = data.get('path', '')
+    content = data.get('content', '')
+
+    try:
+        target = safe_path(req_path)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.isfile(target):
+        return jsonify({'error': 'File not found'}), 404
+
+    abs_target = os.path.abspath(target)
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_target,))
+    meta = cursor.fetchone()
+    cursor.fetchall()
+
+    is_owner = (meta and meta['uploaded_by'] == session.get('user_id'))
+    if meta and meta.get('is_private') and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Access denied: private file'}), 403
+
+    if not session.get('can_edit') and not session.get('is_admin') and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Edit permission required'}), 403
+
+    try:
+        with open(target, 'w', encoding='utf-8') as f:
+            f.write(content)
+    except Exception as e:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
+
+    new_size = os.path.getsize(target)
+    if meta:
+        cursor.execute("UPDATE file_metadata SET file_size = %s WHERE id = %s", (new_size, meta['id']))
+    else:
+        cursor.execute(
+            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by) VALUES (%s, %s, %s, %s)",
+            (os.path.basename(target), abs_target, new_size, session.get('user_id'))
+        )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({'success': True, 'file_size': new_size})
+
+

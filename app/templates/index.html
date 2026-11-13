@@ -111,6 +111,30 @@
     </div>
 </div>
 
+<!-- File Viewer / Editor Modal -->
+<div class="modal fade" id="fileEditorModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-text"></i> <span id="editorFileName">File</span></h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editorFilePath">
+                <div class="mb-2 d-flex justify-content-between align-items-center">
+                    <span id="editorStatusBadge" class="badge bg-secondary">Read Only</span>
+                    <small class="text-muted" id="editorPathHint"></small>
+                </div>
+                <textarea id="fileEditorText" class="form-control font-monospace" rows="18" style="font-size: 0.9rem; tab-size: 4;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="editorSaveBtn" onclick="saveFileContent()"><i class="bi bi-check2"></i> Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Rename Modal -->
 <div class="modal fade" id="renameModal" tabindex="-1">
     <div class="modal-dialog">

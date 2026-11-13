@@ -51,6 +51,7 @@ async function fetchFiles() {
             <td>${item.modified}</td>
             <td>
                 <div class="btn-group btn-group-sm">
+                    ${!item.is_dir ? `<button class="btn btn-sm btn-outline-info" onclick="openFileEditor('${encodeURIComponent(item.name)}')" title="View / Edit"><i class="bi bi-file-earmark-text"></i></button>` : ''}
                     ${!item.is_dir ? `<a href="/api/download?path=${encodeURIComponent(filePath)}" class="btn btn-sm btn-outline-success" title="Download"><i class="bi bi-download"></i></a>` : ''}
                     <button class="btn btn-sm btn-outline-primary" onclick="openRenameModal('${encodeURIComponent(item.name)}')" title="Rename"><i class="bi bi-pencil"></i></button>
                     ${toggleVisibilityBtn}
@@ -125,6 +126,63 @@ async function createFolder() {
         body: JSON.stringify({ path: currentPath, folder_name: name, is_private: isPrivate })
     });
     fetchFiles();
+}
+
+async function openFileEditor(encodedName) {
+    const name = decodeURIComponent(encodedName);
+    const target = currentPath ? currentPath + '/' + name : name;
+    document.getElementById('editorFilePath').value = target;
+    document.getElementById('editorFileName').textContent = name;
+    document.getElementById('editorPathHint').textContent = '/' + target;
+    document.getElementById('fileEditorText').value = 'Loading content...';
+
+    const res = await fetch(`/api/file/content?path=${encodeURIComponent(target)}`);
+    const data = await res.json();
+    if (!res.ok) {
+        alert(data.error || "Cannot load file content");
+        return;
+    }
+
+    const textarea = document.getElementById('fileEditorText');
+    textarea.value = data.content || '';
+    const saveBtn = document.getElementById('editorSaveBtn');
+    const badge = document.getElementById('editorStatusBadge');
+
+    if (data.can_edit) {
+        textarea.removeAttribute('readonly');
+        saveBtn.style.display = 'inline-block';
+        badge.className = 'badge bg-success';
+        badge.textContent = 'Editable';
+    } else {
+        textarea.setAttribute('readonly', 'true');
+        saveBtn.style.display = 'none';
+        badge.className = 'badge bg-secondary';
+        badge.textContent = 'Read Only';
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('fileEditorModal'));
+    modal.show();
+}
+
+async function saveFileContent() {
+    const path = document.getElementById('editorFilePath').value;
+    const content = document.getElementById('fileEditorText').value;
+
+    const res = await fetch('/api/file/content', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ path: path, content: content })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        alert("File saved successfully!");
+        const modalEl = document.getElementById('fileEditorModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+        fetchFiles();
+    } else {
+        alert(data.error || "Failed to save file");
+    }
 }
 
 function openRenameModal(encodedName) {
