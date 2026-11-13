@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}NAS Login{% endblock %}
+{% block content %}
+<div class="login-wrapper">
+    <div class="card login-card">
+        <div class="card-header">🗄️ Linux NAS Portal</div>
+        <div class="card-body p-4">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="alert alert-{{ category if category != 'message' else 'danger' }} py-2">{{ message }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+            <form method="POST" action="/login">
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input type="text" name="username" class="form-control" required autofocus placeholder="admin">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Password</label>
+                    <input type="password" name="password" class="form-control" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary w-100 py-2">Sign In</button>
+            </form>
+            <div class="text-center mt-3 pt-2 border-top">
+                <span class="text-muted small">Don't have an account?</span>
+                <a href="/register" class="small text-decoration-none fw-semibold ms-1">Create Account</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
