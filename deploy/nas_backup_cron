@@ -1,0 +1,13 @@
+#!/bin/bash
+# ==============================================================================
+# Cron Job Script for Daily/Weekly Linux NAS Backups
+# Installation: sudo cp deploy/nas_backup_cron /etc/cron.daily/nas-backup && sudo chmod +x /etc/cron.daily/nas-backup
+# ==============================================================================
+
+NAS_DIR="/srv/nas-web-server"
+PYTHON_BIN="${NAS_DIR}/venv/bin/python"
+
+if [ -f "${PYTHON_BIN}" ]; then
+    cd "${NAS_DIR}"
+    "${PYTHON_BIN}" -c "from app.backup_utils import perform_full_backup; print(perform_full_backup(include_db=True, backup_type='cron'))" >> /var/log/nas_backup_cron.log 2>&1
+fi
