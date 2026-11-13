@@ -16,6 +16,7 @@
         {% if is_admin %}
         <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#users-tab" onclick="fetchUsers()"><i class="bi bi-people"></i> Users</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#backup-tab" onclick="fetchBackups()"><i class="bi bi-shield-check"></i> Backups</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#security-tab" onclick="fetchSecurityData()"><i class="bi bi-shield-shaded"></i> Security & Antivirus</button></li>
         {% endif %}
     </ul>
 
@@ -167,6 +168,72 @@
                             </tr>
                         </thead>
                         <tbody id="backupTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECURITY -->
+        <div class="tab-pane fade" id="security-tab">
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="card p-3 shadow-sm border-start border-4 border-info">
+                        <h6 class="text-muted"><i class="bi bi-shield-lock"></i> Gateway Engine</h6>
+                        <h5 id="secEngineName" class="mb-1 text-truncate">ClamAV Gateway</h5>
+                        <small class="text-success" id="secDbStatus"><i class="bi bi-check-circle"></i> Signatures Active</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card p-3 shadow-sm border-start border-4 border-success">
+                        <h6 class="text-muted"><i class="bi bi-check2-circle"></i> Clean Files Scanned</h6>
+                        <h3 id="secCleanCount" class="text-success">0</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card p-3 shadow-sm border-start border-4 border-danger">
+                        <h6 class="text-muted"><i class="bi bi-bug"></i> Threats Intercepted</h6>
+                        <h3 id="secInfectedCount" class="text-danger">0</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card p-3 shadow-sm border-start border-4 border-warning">
+                        <h6 class="text-muted"><i class="bi bi-radioactive"></i> Quarantined Files</h6>
+                        <h3 id="secQuarantinedCount" class="text-warning">0</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-3 shadow-sm mb-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1"><i class="bi bi-search"></i> On-Demand Storage Antivirus Scan</h5>
+                        <p class="text-muted small mb-0">Runs an exhaustive ClamAV malware scan across all storage files and directories on the NAS.</p>
+                    </div>
+                    <button class="btn btn-outline-danger" id="runStorageScanBtn" onclick="runStorageMalwareScan()">
+                        <i class="bi bi-shield-exclamation"></i> Scan Entire Storage Now
+                    </button>
+                </div>
+            </div>
+
+            <div class="card p-3 shadow-sm">
+                <div class="d-flex justify-content-between mb-3 align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-card-checklist"></i> Antivirus Inspection & Scan History</h5>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="fetchSecurityData()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Filename</th>
+                                <th>Uploader</th>
+                                <th>Scan Result</th>
+                                <th>Threat Identified</th>
+                                <th>Quarantine Status</th>
+                                <th>Timestamp</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="securityTableBody"></tbody>
                     </table>
                 </div>
             </div>

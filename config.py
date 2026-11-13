@@ -8,6 +8,11 @@ class Config:
     IS_LINUX = platform.system() == 'Linux'
     STORAGE_DIR = '/srv/nas_storage' if IS_LINUX else os.path.abspath('./storage')
     BACKUP_DIR = '/srv/nas_backups' if IS_LINUX else os.path.abspath('./backups')
+    QUARANTINE_DIR = '/srv/nas_quarantine' if IS_LINUX else os.path.abspath('./quarantine')
+
+    CLAMAV_SOCKET = os.environ.get('CLAMAV_SOCKET', '/var/run/clamav/clamd.ctl')
+    CLAMAV_HOST = os.environ.get('CLAMAV_HOST', '127.0.0.1')
+    CLAMAV_PORT = int(os.environ.get('CLAMAV_PORT', 3310))
     
     DB_CONFIG = {
         'host': os.environ.get('DB_HOST', 'localhost'),

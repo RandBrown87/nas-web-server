@@ -91,18 +91,21 @@ def create_app():
 
     os.makedirs(Config.STORAGE_DIR, exist_ok=True)
     os.makedirs(Config.BACKUP_DIR, exist_ok=True)
+    os.makedirs(Config.QUARANTINE_DIR, exist_ok=True)
 
     from app.routes.auth import auth_bp
     from app.routes.files import files_bp
     from app.routes.system import system_bp
     from app.routes.users import users_bp
     from app.routes.backup import backup_bp
+    from app.routes.security import security_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(files_bp)
     app.register_blueprint(system_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(backup_bp)
+    app.register_blueprint(security_bp)
 
     with app.app_context():
         init_db()

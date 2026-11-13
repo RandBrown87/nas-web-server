@@ -448,5 +448,99 @@ async function restoreBackup(encodedName) {
     }
 }
 
+async function fetchSecurityData() {
+    const statsRes = await fetch('/api/security/stats');
+    if (statsRes.ok) {
+        const stats = await statsRes.json();
+        document.getElementById('secCleanCount').textContent = stats.clean_files || 0;
+        document.getElementById('secInfectedCount').textContent = stats.infected_threats || 0;
+        document.getElementById('secQuarantinedCount').textContent = stats.quarantined_files || 0;
+        if (stats.clamav_status) {
+            document.getElementById('secEngineName').textContent = stats.clamav_status.version || 'ClamAV Gateway';
+            document.getElementById('secDbStatus').innerHTML = `<i class="bi bi-check-circle"></i> ${escapeHtml(stats.clamav_status.db_updated || 'Active')}`;
+        }
+    }
+
+    const historyRes = await fetch('/api/security/scans');
+    if (historyRes.ok) {
+        const data = await historyRes.json();
+        const tbody = document.getElementById('securityTableBody');
+        tbody.innerHTML = '';
+        if (!data.scans || data.scans.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No scans recorded yet.</td></tr>';
+            return;
+        }
+
+        data.scans.forEach(s => {
+            const isClean = s.scan_result === 'clean';
+            const badgeClass = isClean ? 'bg-success' : 'bg-danger';
+            const threatBadge = s.threat_name ? `<span class="badge bg-danger">${escapeHtml(s.threat_name)}</span>` : '<span class="text-muted">None</span>';
+            const quarantineBadge = s.is_quarantined
+                ? `<span class="badge bg-warning text-dark"><i class="bi bi-lock-fill"></i> Quarantined</span>`
+                : (isClean ? `<span class="badge bg-light text-success border">Storage</span>` : `<span class="badge bg-secondary">${escapeHtml(s.scan_result)}</span>`);
+
+            let actionBtn = '';
+            if (s.is_quarantined) {
+                actionBtn = `
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-danger" onclick="quarantineAction(${s.id}, 'delete')">Delete</button>
+                        <button class="btn btn-outline-success" onclick="quarantineAction(${s.id}, 'release')">Release</button>
+                    </div>`;
+            } else {
+                actionBtn = '<span class="text-muted small">-</span>';
+            }
+
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>${escapeHtml(s.filename)}</strong></td>
+                    <td>${escapeHtml(s.uploader_name || 'System')}</td>
+                    <td><span class="badge ${badgeClass}">${escapeHtml(s.scan_result)}</span></td>
+                    <td>${threatBadge}</td>
+                    <td>${quarantineBadge}</td>
+                    <td>${s.scanned_at}</td>
+                    <td>${actionBtn}</td>
+                </tr>`;
+        });
+    }
+}
+
+async function runStorageMalwareScan() {
+    const btn = document.getElementById('runStorageScanBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Scanning Storage...';
+
+    const res = await fetch('/api/security/scan-storage', { method: 'POST' });
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-shield-exclamation"></i> Scan Entire Storage Now';
+
+    if (res.ok) {
+        const data = await res.json();
+        const r = data.result;
+        alert(`Storage Malware Scan Finished!\nTotal Files Scanned: ${r.total_scanned}\nClean: ${r.clean_count}\nThreats Detected: ${r.infected_count}`);
+        fetchSecurityData();
+    } else {
+        alert("Scan failed to complete.");
+    }
+}
+
+async function quarantineAction(scanId, action) {
+    const promptMsg = action === 'delete' ? 'Permanently delete this quarantined threat?' : 'Release this file to normal NAS storage?';
+    if (!confirm(promptMsg)) return;
+
+    const res = await fetch(`/api/security/quarantine/${scanId}/action`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ action: action })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        alert(data.message || "Action completed");
+        fetchSecurityData();
+        fetchFiles();
+    } else {
+        alert(data.error || "Action failed");
+    }
+}
+
 fetchFiles();
 setInterval(fetchStats, 5000);

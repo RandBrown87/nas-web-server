@@ -6,6 +6,7 @@ from werkzeug.utils import secure_filename
 from config import Config
 from app.database import get_db
 from app.decorators import login_required
+from app.scanner import scan_file
 
 files_bp = Blueprint('files', __name__)
 
@@ -107,7 +108,55 @@ def upload():
         conn.close()
         return jsonify({'error': 'A private file already exists with this name'}), 403
 
-    file.save(dest)
+    # Stage upload in Quarantine folder first for Antivirus scanning
+    os.makedirs(Config.QUARANTINE_DIR, exist_ok=True)
+    temp_quarantine_path = os.path.join(
+        Config.QUARANTINE_DIR,
+        f"staging_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
+    )
+    file.save(temp_quarantine_path)
+
+    # Scan staged file with ClamAV Malware Protection Gateway
+    scan_result = scan_file(temp_quarantine_path)
+
+    if scan_result.get('status') == 'infected':
+        threat = scan_result.get('threat', 'Malware.Detected')
+        quarantine_dest = os.path.join(
+            Config.QUARANTINE_DIR,
+            f"quarantine_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
+        )
+        os.rename(temp_quarantine_path, quarantine_dest)
+
+        # Log infected attempt to security_scans table
+        cursor.execute("""
+            INSERT INTO security_scans (filename, file_path, uploaded_by, scan_result, threat_name, is_quarantined)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (filename, quarantine_dest, session['user_id'], 'infected', threat, True))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'error': f"Malware Detected ({threat})! File has been blocked and quarantined.",
+            'threat': threat,
+            'quarantined': True
+        }), 422
+
+    # Clean file: Move from quarantine to NAS storage
+    try:
+        shutil.move(temp_quarantine_path, dest)
+    except Exception as e:
+        if os.path.exists(temp_quarantine_path):
+            os.remove(temp_quarantine_path)
+        cursor.close()
+        conn.close()
+        return jsonify({'error': f'Failed to store clean file: {str(e)}'}), 500
+
+    # Log clean scan
+    cursor.execute("""
+        INSERT INTO security_scans (filename, file_path, uploaded_by, scan_result, threat_name, is_quarantined)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (filename, abs_dest, session['user_id'], 'clean', None, False))
 
     if existing:
         cursor.execute(
@@ -123,7 +172,7 @@ def upload():
     cursor.close()
     conn.close()
 
-    return jsonify({'success': True, 'filename': filename, 'is_private': is_private})
+    return jsonify({'success': True, 'filename': filename, 'is_private': is_private, 'scan_result': 'clean'})
 
 @files_bp.route('/api/files/visibility', methods=['POST'])
 @login_required
