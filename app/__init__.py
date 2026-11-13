@@ -106,5 +106,10 @@ def create_app():
 
     with app.app_context():
         init_db()
+        try:
+            from app.scheduler import start_scheduler
+            start_scheduler(app)
+        except Exception as e:
+            print(f"Could not start scheduler: {e}")
 
     return app

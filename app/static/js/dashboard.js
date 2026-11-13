@@ -337,29 +337,115 @@ async function deleteUser(id) {
 }
 
 async function fetchBackups() {
+    fetchBackupSchedule();
     const res = await fetch('/api/backup');
     const data = await res.json();
     const tbody = document.getElementById('backupTableBody');
     tbody.innerHTML = '';
+    if (!data.backups || data.backups.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No backups created yet.</td></tr>';
+        return;
+    }
     data.backups.forEach(b => {
-        tbody.innerHTML += `<tr><td>${b.backup_name}</td><td>${b.created_at}</td><td><button class="btn btn-sm btn-warning" onclick="restoreBackup('${b.backup_name}')"><i class="bi bi-arrow-counterclockwise"></i> Restore</button></td></tr>`;
+        const sizeMb = b.size_bytes ? (b.size_bytes / (1024 * 1024)).toFixed(2) + ' MB' : '-';
+        tbody.innerHTML += `
+            <tr>
+                <td><strong>${escapeHtml(b.backup_name)}</strong></td>
+                <td>${sizeMb}</td>
+                <td><span class="badge bg-success">${escapeHtml(b.status || 'completed')}</span></td>
+                <td>${b.created_at}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning" onclick="restoreBackup('${encodeURIComponent(b.backup_name)}')">
+                        <i class="bi bi-arrow-counterclockwise"></i> Restore Files & Config
+                    </button>
+                </td>
+            </tr>`;
     });
 }
 
-async function createBackup() {
-    alert("Running backup...");
-    const res = await fetch('/api/backup', { method: 'POST' });
-    if (res.ok) { alert("Backup complete!"); fetchBackups(); } else alert("Backup failed");
+async function fetchBackupSchedule() {
+    const res = await fetch('/api/backup/schedule');
+    const data = await res.json();
+    if (!data.schedule) return;
+    const s = data.schedule;
+
+    document.getElementById('schedEnabled').checked = Boolean(s.enabled);
+    document.getElementById('schedFrequency').value = s.frequency || 'daily';
+    document.getElementById('schedTime').value = s.backup_time || '02:00';
+    document.getElementById('schedIncludeDb').checked = Boolean(s.include_db);
+
+    const badge = document.getElementById('scheduleStatusBadge');
+    if (s.enabled) {
+        badge.className = 'badge bg-success';
+        badge.textContent = `Active (${s.frequency})`;
+    } else {
+        badge.className = 'badge bg-secondary';
+        badge.textContent = 'Disabled';
+    }
+
+    const lastRunText = s.last_run ? s.last_run : 'Never';
+    const nextRunText = s.next_run ? s.next_run : (s.enabled ? 'Pending evaluation' : 'Disabled');
+    document.getElementById('scheduleRunTimes').innerHTML = `Last Run: <strong>${lastRunText}</strong> | Next Run: <strong>${nextRunText}</strong>`;
 }
 
-async function restoreBackup(name) {
-    if (!confirm(`Restore from ${name}?`)) return;
+async function saveBackupSchedule() {
+    const enabled = document.getElementById('schedEnabled').checked;
+    const frequency = document.getElementById('schedFrequency').value;
+    const backupTime = document.getElementById('schedTime').value;
+    const includeDb = document.getElementById('schedIncludeDb').checked;
+
+    const res = await fetch('/api/backup/schedule', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            enabled: enabled,
+            frequency: frequency,
+            backup_time: backupTime,
+            include_db: includeDb
+        })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        alert("Backup schedule updated successfully!");
+        fetchBackupSchedule();
+    } else {
+        alert(data.error || "Failed to update backup schedule");
+    }
+}
+
+async function createBackup() {
+    const includeDb = confirm("Create backup archive including all storage files and MySQL system database dump?");
+
+    const res = await fetch('/api/backup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ include_db: includeDb })
+    });
+
+    if (res.ok) {
+        alert("Full backup created successfully!");
+        fetchBackups();
+    } else {
+        alert("Backup creation failed");
+    }
+}
+
+async function restoreBackup(encodedName) {
+    const name = decodeURIComponent(encodedName);
+    if (!confirm(`Warning: Restoring from ${name} will restore storage files and system configurations / database tables. Continue?`)) return;
+
     const res = await fetch('/api/restore', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ backup_name: name })
     });
-    if (res.ok) { alert("Restored!"); fetchFiles(); } else alert("Restore failed");
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        alert(`Restore complete! ${data.db_restored ? 'Files and MySQL database successfully restored.' : 'Files restored.'}`);
+        fetchFiles();
+    } else {
+        alert(data.error || "Restore failed");
+    }
 }
 
 fetchFiles();
