@@ -95,5 +95,17 @@ class TestFileEditorPermissions(unittest.TestCase):
         res = self.client.get('/api/file/content?path=../../etc/passwd')
         self.assertIn(res.status_code, [400, 403])
 
+    def test_preview_inline_content(self):
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = 1
+            sess['username'] = 'admin'
+            sess['is_admin'] = True
+
+        res = self.client.get(f'/api/preview?path={self.test_filename}')
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("Initial Content", res.data.decode('utf-8'))
+        self.assertEqual(res.headers.get('Content-Disposition'), 'inline; filename=editor_sample.txt')
+
+
 if __name__ == '__main__':
     unittest.main()

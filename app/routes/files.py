@@ -236,6 +236,43 @@ def download():
 
     return send_file(path, as_attachment=True)
 
+@files_bp.route('/api/preview')
+@login_required
+def preview():
+    try:
+        path = safe_path(request.args.get('path', ''))
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.isfile(path):
+        return jsonify({'error': 'File not found'}), 404
+
+    abs_path = os.path.abspath(path)
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_path,))
+    meta = cursor.fetchone()
+    cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Private files can strictly ONLY be previewed by the user who uploaded them
+    if meta and meta.get('is_private'):
+        if meta.get('uploaded_by') != session.get('user_id'):
+            return jsonify({'error': 'Access denied: private file'}), 403
+
+    import mimetypes
+    mimetype, _ = mimetypes.guess_type(path)
+    if not mimetype:
+        ext = os.path.splitext(path)[1].lower()
+        if ext in ['.py', '.js', '.ts', '.html', '.css', '.json', '.sql', '.sh', '.md', '.log', '.csv']:
+            mimetype = 'text/plain; charset=utf-8'
+        else:
+            mimetype = 'application/octet-stream'
+
+    return send_file(path, mimetype=mimetype, as_attachment=False)
+
+
 @files_bp.route('/api/mkdir', methods=['POST'])
 @login_required
 def mkdir():

@@ -1,12 +1,16 @@
 // ==============================================================================
-// LINUX NAS PORTAL - MODERN DASHBOARD CONTROLLER
-// Interactive, Animated, Real-time Visual Upgrades & Seamless API Integration
+// LINUX NAS PORTAL - INNOVATIVE DASHBOARD & UNIVERSAL MEDIA SUITE
+// Features: Universal Media Previewer (Images, Video, Audio, PDF, Code Editor),
+// Dark/Light Theme Engine, Live CPU Sparkline, Storage Spectrum, Drag & Drop Upload
 // ==============================================================================
 
 let currentPath = '';
 let cachedFiles = [];
 let cachedUsers = [];
 let toastInstance = null;
+let currentPreviewIndex = -1;
+let currentImageZoom = 1.0;
+let cpuHistory = [10, 15, 12, 18, 22, 19, 25, 20, 24, 18, 22, 28, 24, 20, 18];
 
 // Helper: Escape HTML strings for XSS safety
 function escapeHtml(str) {
@@ -19,7 +23,7 @@ function escapeHtml(str) {
         .replace(/'/g, "&#039;");
 }
 
-// Modern Toast Notification Utility
+// 1. Modern Toast Notification Utility
 function showToast(title, message, type = 'info') {
     const toastEl = document.getElementById('nasToast');
     if (!toastEl) {
@@ -33,7 +37,6 @@ function showToast(title, message, type = 'info') {
     titleEl.textContent = title;
     msgEl.textContent = message;
 
-    // Semantic icons & colors
     if (type === 'success') {
         iconEl.className = 'bi bi-check-circle-fill fs-5 text-success';
     } else if (type === 'danger' || type === 'error') {
@@ -50,7 +53,28 @@ function showToast(title, message, type = 'info') {
     toastInstance.show();
 }
 
-// File Type Icon Stylizer
+// 2. Dark / Light Theme Engine
+function initTheme() {
+    const savedTheme = localStorage.getItem('nas-theme') || 'light';
+    applyTheme(savedTheme);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    applyTheme(newTheme);
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('nas-theme', theme);
+    const icon = document.getElementById('themeToggleIcon');
+    if (icon) {
+        icon.className = theme === 'dark' ? 'bi bi-sun-fill text-warning' : 'bi bi-moon-stars-fill';
+    }
+}
+
+// 3. File Type Icon Stylizer
 function getFileIcon(name, isDir) {
     if (isDir) {
         return '<span class="file-icon-box file-icon-dir"><i class="bi bi-folder-fill"></i></span>';
@@ -60,7 +84,11 @@ function getFileIcon(name, isDir) {
         return '<span class="file-icon-box file-icon-pdf"><i class="bi bi-file-earmark-pdf-fill"></i></span>';
     } else if (/\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/.test(lower)) {
         return '<span class="file-icon-box file-icon-img"><i class="bi bi-file-earmark-image-fill"></i></span>';
-    } else if (/\.(py|js|html|css|json|sh|sql|ts|php|c|cpp|h)$/.test(lower)) {
+    } else if (/\.(mp4|webm|ogg|mov|mkv|m4v)$/.test(lower)) {
+        return '<span class="file-icon-box" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4;"><i class="bi bi-file-earmark-play-fill"></i></span>';
+    } else if (/\.(mp3|wav|ogg|m4a|aac|flac)$/.test(lower)) {
+        return '<span class="file-icon-box" style="background: rgba(147, 51, 234, 0.15); color: #9333ea;"><i class="bi bi-file-earmark-music-fill"></i></span>';
+    } else if (/\.(py|js|html|css|json|sh|sql|ts|php|c|cpp|h|md|log|csv|yml|yaml|env|conf|ini)$/.test(lower)) {
         return '<span class="file-icon-box file-icon-code"><i class="bi bi-file-earmark-code-fill"></i></span>';
     } else if (/\.(tar|gz|zip|bz2|xz|rar|7z)$/.test(lower)) {
         return '<span class="file-icon-box file-icon-archive"><i class="bi bi-file-earmark-zip-fill"></i></span>';
@@ -69,7 +97,7 @@ function getFileIcon(name, isDir) {
     }
 }
 
-// Clickable Interactive Breadcrumbs
+// 4. Clickable Interactive Breadcrumbs
 function renderBreadcrumbs(path) {
     const label = document.getElementById('currentPathLabel');
     if (!path) {
@@ -96,7 +124,7 @@ function navigateToPath(target) {
     fetchFiles();
 }
 
-// 1. Files & Directory Operations
+// 5. Files & Directory Operations
 async function fetchFiles() {
     try {
         const res = await fetch(`/api/files?path=${encodeURIComponent(currentPath)}`);
@@ -104,6 +132,7 @@ async function fetchFiles() {
         renderBreadcrumbs(currentPath);
         cachedFiles = data.items || [];
         renderFileList(cachedFiles);
+        updateStorageSpectrum(cachedFiles);
     } catch (err) {
         console.error("Fetch files error:", err);
     }
@@ -131,7 +160,7 @@ function renderFileList(items) {
         const safeName = escapeHtml(item.name);
         const nameHtml = item.is_dir
             ? `<a href="#" onclick="enterFolder('${encodeURIComponent(item.name)}')" class="text-decoration-none fw-bold text-primary">${safeName}</a>`
-            : `<span class="fw-semibold text-dark">${safeName}</span>`;
+            : `<span class="fw-semibold text-dark file-row-name" role="button" onclick="openFilePreview('${encodeURIComponent(item.name)}')">${safeName}</span>`;
 
         let sizeText = '-';
         if (item.size !== null) {
@@ -170,7 +199,7 @@ function renderFileList(items) {
             <td><span class="small text-muted font-monospace">${item.modified}</span></td>
             <td class="text-end">
                 <div class="btn-group btn-group-sm shadow-sm" style="border-radius: 8px; overflow: hidden;">
-                    ${!item.is_dir ? `<button class="btn btn-outline-info" onclick="openFileEditor('${encodeURIComponent(item.name)}')" title="View / Edit Content"><i class="bi bi-file-earmark-text"></i></button>` : ''}
+                    ${!item.is_dir ? `<button class="btn btn-outline-info" onclick="openFilePreview('${encodeURIComponent(item.name)}')" title="Preview / View / Edit"><i class="bi bi-eye"></i></button>` : ''}
                     ${!item.is_dir ? `<a href="/api/download?path=${encodeURIComponent(filePath)}" class="btn btn-outline-success" title="Download File"><i class="bi bi-download"></i></a>` : ''}
                     <button class="btn btn-outline-primary" onclick="openRenameModal('${encodeURIComponent(item.name)}')" title="Rename"><i class="bi bi-pencil"></i></button>
                     ${toggleVisibilityBtn}
@@ -182,6 +211,7 @@ function renderFileList(items) {
     });
 }
 
+// 6. Instant Directory Search & Category Filters
 function filterFiles(query) {
     const q = (query || '').toLowerCase().trim();
     if (!q) {
@@ -190,6 +220,77 @@ function filterFiles(query) {
     }
     const filtered = cachedFiles.filter(item => item.name.toLowerCase().includes(q));
     renderFileList(filtered);
+}
+
+function filterByExtensionGroup(group) {
+    let exts = [];
+    if (group === 'images') exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+    else if (group === 'docs') exts = ['.pdf', '.doc', '.docx', '.txt', '.md', '.rtf', '.odt'];
+    else if (group === 'videos') exts = ['.mp4', '.webm', '.ogg', '.mov', '.mkv', '.m4v'];
+    else if (group === 'code') exts = ['.py', '.js', '.ts', '.html', '.css', '.json', '.sh', '.sql', '.yml', '.yaml', '.php', '.c', '.cpp', '.h'];
+    else if (group === 'archives') exts = ['.zip', '.tar', '.gz', '.bz2', '.xz', '.rar', '.7z'];
+
+    const filtered = cachedFiles.filter(item => {
+        if (item.is_dir) return false;
+        const lower = item.name.toLowerCase();
+        return exts.some(e => lower.endsWith(e));
+    });
+    renderFileList(filtered);
+}
+
+// 7. Directory Storage Breakdown Spectrum
+function updateStorageSpectrum(items) {
+    let imgBytes = 0, docBytes = 0, vidBytes = 0, codeBytes = 0, archBytes = 0, otherBytes = 0;
+    let imgCount = 0, docCount = 0, vidCount = 0, codeCount = 0, archCount = 0;
+
+    items.forEach(item => {
+        if (item.is_dir) return;
+        const lower = item.name.toLowerCase();
+        const size = item.size || 0;
+
+        if (/\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/.test(lower)) {
+            imgBytes += size; imgCount++;
+        } else if (/\.(pdf|doc|docx|txt|md|rtf|odt)$/.test(lower)) {
+            docBytes += size; docCount++;
+        } else if (/\.(mp4|webm|ogg|mov|mkv|m4v)$/.test(lower)) {
+            vidBytes += size; vidCount++;
+        } else if (/\.(py|js|ts|html|css|json|sh|sql|yml|yaml|php|c|cpp|h)$/.test(lower)) {
+            codeBytes += size; codeCount++;
+        } else if (/\.(zip|tar|gz|bz2|xz|rar|7z)$/.test(lower)) {
+            archBytes += size; archCount++;
+        } else {
+            otherBytes += size;
+        }
+    });
+
+    const total = imgBytes + docBytes + vidBytes + codeBytes + archBytes + otherBytes;
+
+    if (total > 0) {
+        document.getElementById('specImg').style.width = ((imgBytes / total) * 100).toFixed(1) + '%';
+        document.getElementById('specDoc').style.width = ((docBytes / total) * 100).toFixed(1) + '%';
+        document.getElementById('specVid').style.width = ((vidBytes / total) * 100).toFixed(1) + '%';
+        document.getElementById('specCode').style.width = ((codeBytes / total) * 100).toFixed(1) + '%';
+        document.getElementById('specArch').style.width = ((archBytes / total) * 100).toFixed(1) + '%';
+        document.getElementById('specOther').style.width = ((otherBytes / total) * 100).toFixed(1) + '%';
+
+        let totalMb = (total / (1024 * 1024)).toFixed(2);
+        document.getElementById('spectrumStatsLabel').textContent = `${totalMb} MB in ${items.length} items`;
+    } else {
+        document.getElementById('specImg').style.width = '0%';
+        document.getElementById('specDoc').style.width = '0%';
+        document.getElementById('specVid').style.width = '0%';
+        document.getElementById('specCode').style.width = '0%';
+        document.getElementById('specArch').style.width = '0%';
+        document.getElementById('specOther').style.width = '0%';
+        document.getElementById('spectrumStatsLabel').textContent = 'Directory is empty';
+    }
+
+    document.getElementById('specCountImg').textContent = imgCount;
+    document.getElementById('specCountDoc').textContent = docCount;
+    document.getElementById('specCountVid').textContent = vidCount;
+    document.getElementById('specCountCode').textContent = codeCount;
+    document.getElementById('specCountArch').textContent = archCount;
+    document.getElementById('specCountAll').textContent = items.length;
 }
 
 function enterFolder(encodedName) {
@@ -309,45 +410,198 @@ async function deleteItem(encodedName) {
     }
 }
 
-// 2. Inline Text File Editor
-async function openFileEditor(encodedName) {
+// ==============================================================================
+// 8. UNIVERSAL FILE PREVIEWER & MULTIMEDIA SUITE (Images, Video, Audio, PDF, Text)
+// ==============================================================================
+
+// Direct compatibility alias for openFileEditor
+function openFileEditor(encodedName) {
+    openFilePreview(encodedName);
+}
+
+async function openFilePreview(encodedName) {
     const name = decodeURIComponent(encodedName);
     const target = currentPath ? currentPath + '/' + name : name;
+
+    // Track index for Prev/Next navigation
+    const fileOnlyItems = cachedFiles.filter(f => !f.is_dir);
+    currentPreviewIndex = fileOnlyItems.findIndex(f => f.name === name);
+
+    updatePreviewNavButtons(fileOnlyItems);
+
     document.getElementById('editorFilePath').value = target;
     document.getElementById('editorFileName').textContent = name;
     document.getElementById('editorPathHint').textContent = '/' + target;
-    document.getElementById('fileEditorText').value = 'Loading file contents...';
+    document.getElementById('previewDownloadBtn').href = `/api/download?path=${encodeURIComponent(target)}`;
+
+    const container = document.getElementById('previewMediaContainer');
+    const zoomControls = document.getElementById('imageZoomControls');
+    const saveBtn = document.getElementById('editorSaveBtn');
+    const statusBadge = document.getElementById('editorStatusBadge');
+    const metaDetails = document.getElementById('previewMetaDetails');
+
+    currentImageZoom = 1.0;
+    zoomControls.style.display = 'none';
+    saveBtn.style.display = 'none';
+    statusBadge.className = 'badge bg-secondary px-2 py-1 small';
+    statusBadge.textContent = 'Preview';
+
+    const lower = name.toLowerCase();
+
+    // 1. IMAGE PREVIEW
+    if (/\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/.test(lower)) {
+        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-image text-purple"></i>';
+        zoomControls.style.display = 'inline-flex';
+        statusBadge.className = 'badge bg-purple-subtle text-purple border border-purple-subtle px-2 py-1 small';
+        statusBadge.textContent = 'Image Lightbox';
+        metaDetails.textContent = `Type: Raster/Vector Image | Preview Stream: /api/preview`;
+
+        container.innerHTML = `
+            <div class="preview-img-container" id="imgContainer">
+                <img id="activePreviewImg" src="/api/preview?path=${encodeURIComponent(target)}" alt="${safeName(name)}" style="transform: scale(1);">
+            </div>`;
+
+    // 2. PDF VIEWER
+    } else if (lower.endsWith('.pdf')) {
+        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-pdf text-danger"></i>';
+        statusBadge.className = 'badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 small';
+        statusBadge.textContent = 'PDF Document';
+        metaDetails.textContent = `Type: Adobe PDF Document | In-browser Rendering`;
+
+        container.innerHTML = `
+            <iframe src="/api/preview?path=${encodeURIComponent(target)}#toolbar=1" style="width: 100%; height: 75vh; border: none; border-radius: 8px;"></iframe>`;
+
+    // 3. VIDEO PLAYER
+    } else if (/\.(mp4|webm|ogg|mov|mkv|m4v)$/.test(lower)) {
+        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-play text-info"></i>';
+        statusBadge.className = 'badge bg-info-subtle text-info border border-info-subtle px-2 py-1 small';
+        statusBadge.textContent = 'Cinema Video Player';
+        metaDetails.textContent = `Type: Video Stream | HTML5 Media Player`;
+
+        container.innerHTML = `
+            <div class="w-100 p-2 d-flex justify-content-center">
+                <video controls autoplay playsinline style="max-width: 100%; max-height: 72vh; border-radius: 8px; background: #000; box-shadow: 0 10px 30px rgba(0,0,0,0.6);">
+                    <source src="/api/preview?path=${encodeURIComponent(target)}">
+                    Your browser does not support HTML5 video preview.
+                </video>
+            </div>`;
+
+    // 4. AUDIO PLAYER WITH WAVEFORM
+    } else if (/\.(mp3|wav|ogg|m4a|aac|flac)$/.test(lower)) {
+        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-music text-primary"></i>';
+        statusBadge.className = 'badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 small';
+        statusBadge.textContent = 'Audio Track';
+        metaDetails.textContent = `Type: Audio File | HTML5 Sound Engine`;
+
+        container.innerHTML = `
+            <div class="w-100 p-5 d-flex flex-column align-items-center justify-content-center">
+                <div class="audio-visualizer-bars">
+                    <div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div>
+                    <div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div>
+                    <div class="audio-bar"></div><div class="audio-bar"></div>
+                </div>
+                <h5 class="text-white mb-3 fw-bold font-monospace">${escapeHtml(name)}</h5>
+                <audio controls autoplay style="width: 100%; max-width: 520px;">
+                    <source src="/api/preview?path=${encodeURIComponent(target)}">
+                </audio>
+            </div>`;
+
+    // 5. TEXT / CODE / CONFIG EDITOR
+    } else {
+        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-code text-success"></i>';
+        metaDetails.textContent = `Type: Plaintext / Code | Monospace Editor`;
+
+        container.innerHTML = `
+            <textarea id="fileEditorText" class="form-control font-monospace m-3" rows="18" style="font-size: 0.88rem; tab-size: 4; background: #090d16; color: #38bdf8; border-color: #1e293b;"></textarea>`;
+
+        const textarea = document.getElementById('fileEditorText');
+        textarea.value = 'Loading file contents...';
+
+        try {
+            const res = await fetch(`/api/file/content?path=${encodeURIComponent(target)}`);
+            const data = await res.json();
+            if (!res.ok) {
+                textarea.value = `[Unable to preview file content as text: ${data.error || 'Binary content'}]`;
+                statusBadge.textContent = 'Binary File';
+                return;
+            }
+
+            textarea.value = data.content || '';
+
+            if (data.can_edit) {
+                textarea.removeAttribute('readonly');
+                saveBtn.style.display = 'inline-flex';
+                statusBadge.className = 'badge bg-success px-2 py-1 small';
+                statusBadge.textContent = 'Editable';
+            } else {
+                textarea.setAttribute('readonly', 'true');
+                saveBtn.style.display = 'none';
+                statusBadge.className = 'badge bg-secondary px-2 py-1 small';
+                statusBadge.textContent = 'Read Only';
+            }
+        } catch (err) {
+            textarea.value = '[Error fetching file text from server]';
+        }
+    }
 
     const modal = new bootstrap.Modal(document.getElementById('fileEditorModal'));
     modal.show();
+}
 
-    try {
-        const res = await fetch(`/api/file/content?path=${encodeURIComponent(target)}`);
-        const data = await res.json();
-        if (!res.ok) {
-            showToast("File Read Error", data.error || "Cannot load file content.", "danger");
-            return;
-        }
+function safeName(str) {
+    return escapeHtml(str).replace(/"/g, '&quot;');
+}
 
-        const textarea = document.getElementById('fileEditorText');
-        textarea.value = data.content || '';
-        const saveBtn = document.getElementById('editorSaveBtn');
-        const badge = document.getElementById('editorStatusBadge');
+function updatePreviewNavButtons(fileItems) {
+    const prevBtn = document.getElementById('previewPrevBtn');
+    const nextBtn = document.getElementById('previewNextBtn');
+    if (!prevBtn || !nextBtn) return;
 
-        if (data.can_edit) {
-            textarea.removeAttribute('readonly');
-            saveBtn.style.display = 'inline-flex';
-            badge.className = 'badge bg-success px-3 py-1';
-            badge.textContent = 'Writable / Editable';
-        } else {
-            textarea.setAttribute('readonly', 'true');
-            saveBtn.style.display = 'none';
-            badge.className = 'badge bg-secondary px-3 py-1';
-            badge.textContent = 'Read Only';
-        }
-    } catch (err) {
-        showToast("Error", "Failed to fetch file content.", "danger");
+    if (currentPreviewIndex <= 0) {
+        prevBtn.style.opacity = '0.3';
+        prevBtn.disabled = true;
+    } else {
+        prevBtn.style.opacity = '1';
+        prevBtn.disabled = false;
     }
+
+    if (currentPreviewIndex >= fileItems.length - 1 || currentPreviewIndex === -1) {
+        nextBtn.style.opacity = '0.3';
+        nextBtn.disabled = true;
+    } else {
+        nextBtn.style.opacity = '1';
+        nextBtn.disabled = false;
+    }
+}
+
+function previewPrevFile() {
+    const fileItems = cachedFiles.filter(f => !f.is_dir);
+    if (currentPreviewIndex > 0) {
+        currentPreviewIndex--;
+        openFilePreview(encodeURIComponent(fileItems[currentPreviewIndex].name));
+    }
+}
+
+function previewNextFile() {
+    const fileItems = cachedFiles.filter(f => !f.is_dir);
+    if (currentPreviewIndex < fileItems.length - 1 && currentPreviewIndex !== -1) {
+        currentPreviewIndex++;
+        openFilePreview(encodeURIComponent(fileItems[currentPreviewIndex].name));
+    }
+}
+
+function zoomImage(factor) {
+    const img = document.getElementById('activePreviewImg');
+    if (!img) return;
+    currentImageZoom = Math.max(0.2, Math.min(5.0, currentImageZoom * factor));
+    img.style.transform = `scale(${currentImageZoom})`;
+}
+
+function resetZoomImage() {
+    const img = document.getElementById('activePreviewImg');
+    if (!img) return;
+    currentImageZoom = 1.0;
+    img.style.transform = 'scale(1)';
 }
 
 async function saveFileContent() {
@@ -375,7 +629,7 @@ async function saveFileContent() {
     }
 }
 
-// 3. Rename Operations
+// 9. Rename Operations
 function openRenameModal(encodedName) {
     const name = decodeURIComponent(encodedName);
     const target = currentPath ? currentPath + '/' + name : name;
@@ -414,15 +668,16 @@ async function submitRename() {
     }
 }
 
-// 4. Real-time System Monitoring & Telemetry
+// 10. Real-time System Monitoring & Telemetry with SVG Sparkline
 async function fetchStats() {
     try {
         const res = await fetch('/api/system');
         const data = await res.json();
         
-        // CPU
+        // CPU Percentage & Sparkline Update
         document.getElementById('cpuPercent').textContent = data.cpu_percent + '%';
         document.getElementById('cpuBar').style.width = data.cpu_percent + '%';
+        updateCpuSparkline(data.cpu_percent);
         
         // RAM
         document.getElementById('ramText').textContent = `${data.ram_used_gb} / ${data.ram_total_gb} GB (${data.ram_percent}%)`;
@@ -442,7 +697,40 @@ async function fetchStats() {
     }
 }
 
-// 5. User Management & Access Control
+function updateCpuSparkline(newVal) {
+    cpuHistory.shift();
+    cpuHistory.push(parseFloat(newVal) || 0);
+
+    const width = 100;
+    const height = 30;
+    const step = width / (cpuHistory.length - 1);
+
+    let pathD = '';
+    let fillD = '';
+
+    cpuHistory.forEach((val, i) => {
+        const x = (i * step).toFixed(1);
+        // Normalize 0-100 to height-0 (with padding)
+        const y = (height - (val / 100) * 26 - 2).toFixed(1);
+
+        if (i === 0) {
+            pathD = `M ${x} ${y}`;
+            fillD = `M ${x} ${height} L ${x} ${y}`;
+        } else {
+            pathD += ` L ${x} ${y}`;
+            fillD += ` L ${x} ${y}`;
+        }
+    });
+
+    fillD += ` L ${width} ${height} Z`;
+
+    const pathEl = document.getElementById('cpuSparklinePath');
+    const fillEl = document.getElementById('cpuSparklineFill');
+    if (pathEl) pathEl.setAttribute('d', pathD);
+    if (fillEl) fillEl.setAttribute('d', fillD);
+}
+
+// 11. User Management & Access Control
 async function fetchUsers() {
     try {
         const res = await fetch('/api/users');
@@ -581,7 +869,7 @@ async function deleteUser(id) {
     }
 }
 
-// 6. Backup Scheduler & Recovery Operations
+// 12. Backup Scheduler & Recovery Operations
 async function fetchBackups() {
     fetchBackupSchedule();
     try {
@@ -716,10 +1004,9 @@ async function restoreBackup(encodedName) {
     }
 }
 
-// 7. Security Gateway (ClamAV) & Web Application Firewall (WAF)
+// 13. Security Gateway (ClamAV) & Web Application Firewall (WAF)
 async function fetchSecurityData() {
     try {
-        // Stats
         const statsRes = await fetch('/api/security/stats');
         if (statsRes.ok) {
             const stats = await statsRes.json();
@@ -732,7 +1019,6 @@ async function fetchSecurityData() {
             }
         }
 
-        // Antivirus History
         const historyRes = await fetch('/api/security/scans');
         if (historyRes.ok) {
             const data = await historyRes.json();
@@ -774,7 +1060,6 @@ async function fetchSecurityData() {
             }
         }
 
-        // WAF Logs & Stats
         const wafRes = await fetch('/api/waf/logs');
         if (wafRes.ok) {
             const wafData = await wafRes.json();
@@ -859,9 +1144,67 @@ async function quarantineAction(scanId, action) {
     }
 }
 
-// 8. Lifecycle Initialization
+// 14. Global Drag and Drop File Upload
+function initGlobalDragAndDrop() {
+    const overlay = document.getElementById('globalDropOverlay');
+    if (!overlay) return;
+
+    let dragCounter = 0;
+
+    window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragCounter++;
+        overlay.classList.add('active');
+    });
+
+    window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) {
+            dragCounter = 0;
+            overlay.classList.remove('active');
+        }
+    });
+
+    window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        overlay.classList.remove('active');
+
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const input = document.getElementById('fileInput');
+            if (input) {
+                input.files = e.dataTransfer.files;
+                uploadFile();
+            }
+        }
+    });
+}
+
+// 15. Keyboard Navigation for Media Viewer (Esc, Left Arrow, Right Arrow)
+function initKeyboardShortcuts() {
+    window.addEventListener('keydown', (e) => {
+        const previewModal = document.getElementById('fileEditorModal');
+        if (previewModal && previewModal.classList.contains('show')) {
+            if (e.key === 'ArrowLeft') {
+                previewPrevFile();
+            } else if (e.key === 'ArrowRight') {
+                previewNextFile();
+            }
+        }
+    });
+}
+
+// 16. Lifecycle Initialization
 document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
     fetchFiles();
     fetchStats();
     setInterval(fetchStats, 5000);
+    initGlobalDragAndDrop();
+    initKeyboardShortcuts();
 });

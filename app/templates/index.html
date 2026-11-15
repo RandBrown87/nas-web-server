@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}NAS Dashboard - Linux Cloud Storage{% endblock %}
 {% block content %}
+<!-- Whole-Window Drag & Drop Upload Overlay -->
+<div id="globalDropOverlay" class="global-drop-overlay">
+    <div class="text-center p-4">
+        <div class="mb-3">
+            <i class="bi bi-cloud-arrow-up-fill display-2 text-info"></i>
+        </div>
+        <h3 class="fw-bold text-white mb-2">Drop Files Anywhere to Upload</h3>
+        <p class="text-secondary small mb-0">Files are immediately quarantined and scanned by ClamAV Antivirus</p>
+    </div>
+</div>
+
 <!-- Innovative Glassmorphic Top Navbar -->
 <nav class="navbar navbar-dark nas-navbar px-4 py-2">
     <div class="container-fluid px-0 d-flex justify-content-between align-items-center">
@@ -14,7 +25,12 @@
             </div>
         </div>
 
-        <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2 gap-sm-3">
+            <!-- Dark / Light Mode Switcher -->
+            <button class="btn btn-sm btn-outline-light d-flex align-items-center gap-1 px-2 py-1" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle Dark / Light Theme" style="border-radius: 8px;">
+                <i class="bi bi-moon-stars-fill" id="themeToggleIcon"></i>
+            </button>
+
             <div class="user-profile-badge">
                 <i class="bi bi-person-circle fs-6 text-info"></i>
                 <span class="fw-semibold">{{ username }}</span>
@@ -68,6 +84,42 @@
         <!-- 1. FILES TAB -->
         <div class="tab-pane fade show active" id="files-tab">
             <div class="nas-card p-3 p-md-4">
+                <!-- Storage Breakdown Spectrum Bar -->
+                <div class="p-3 mb-3 bg-light-subtle rounded-3 border border-light-subtle">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small fw-bold text-secondary text-uppercase tracking-wider"><i class="bi bi-pie-chart-fill me-1 text-primary"></i> Directory Storage Distribution</span>
+                        <small class="text-muted font-monospace" id="spectrumStatsLabel">Analyzing directory...</small>
+                    </div>
+                    <div class="storage-spectrum-bar" id="storageSpectrumBar">
+                        <div class="spectrum-seg spectrum-seg-images" id="specImg" style="width: 0%;" title="Images"></div>
+                        <div class="spectrum-seg spectrum-seg-docs" id="specDoc" style="width: 0%;" title="Documents & PDFs"></div>
+                        <div class="spectrum-seg spectrum-seg-videos" id="specVid" style="width: 0%;" title="Videos"></div>
+                        <div class="spectrum-seg spectrum-seg-code" id="specCode" style="width: 0%;" title="Code & Scripts"></div>
+                        <div class="spectrum-seg spectrum-seg-archives" id="specArch" style="width: 0%;" title="Archives"></div>
+                        <div class="spectrum-seg spectrum-seg-other" id="specOther" style="width: 0%;" title="Other"></div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <span class="spectrum-chip" onclick="filterByExtensionGroup('images')" style="background: rgba(147, 51, 234, 0.1); color: #9333ea;">
+                            <span class="spectrum-dot" style="background: #9333ea;"></span> Images (<span id="specCountImg">0</span>)
+                        </span>
+                        <span class="spectrum-chip" onclick="filterByExtensionGroup('docs')" style="background: rgba(2, 132, 199, 0.1); color: #0284c7;">
+                            <span class="spectrum-dot" style="background: #0284c7;"></span> Documents (<span id="specCountDoc">0</span>)
+                        </span>
+                        <span class="spectrum-chip" onclick="filterByExtensionGroup('videos')" style="background: rgba(6, 182, 212, 0.1); color: #06b6d4;">
+                            <span class="spectrum-dot" style="background: #06b6d4;"></span> Videos (<span id="specCountVid">0</span>)
+                        </span>
+                        <span class="spectrum-chip" onclick="filterByExtensionGroup('code')" style="background: rgba(22, 163, 74, 0.1); color: #16a34a;">
+                            <span class="spectrum-dot" style="background: #16a34a;"></span> Code (<span id="specCountCode">0</span>)
+                        </span>
+                        <span class="spectrum-chip" onclick="filterByExtensionGroup('archives')" style="background: rgba(234, 88, 12, 0.1); color: #ea580c;">
+                            <span class="spectrum-dot" style="background: #ea580c;"></span> Archives (<span id="specCountArch">0</span>)
+                        </span>
+                        <span class="spectrum-chip" onclick="filterFiles('')" style="background: rgba(100, 116, 139, 0.1); color: #64748b;">
+                            <span class="spectrum-dot" style="background: #64748b;"></span> All Files (<span id="specCountAll">0</span>)
+                        </span>
+                    </div>
+                </div>
+
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom border-light-subtle">
                     <!-- Path & Navigation -->
                     <div class="d-flex align-items-center gap-2 flex-grow-1">
@@ -116,7 +168,7 @@
                                 <th style="width: 150px;">Uploaded By</th>
                                 <th style="width: 130px;">Visibility</th>
                                 <th style="width: 160px;">Modified</th>
-                                <th style="width: 170px;" class="text-end">Actions</th>
+                                <th style="width: 180px;" class="text-end">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="fileTableBody">
@@ -135,7 +187,7 @@
         <!-- 2. MONITORING TAB -->
         <div class="tab-pane fade" id="monitor-tab">
             <div class="row g-3 mb-4">
-                <!-- CPU Stat Card -->
+                <!-- CPU Stat Card with Live Sparkline -->
                 <div class="col-md-4">
                     <div class="nas-stat-card" style="--card-accent: #0284c7;">
                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -152,9 +204,22 @@
                                 <div id="cpuBar" class="progress-bar bg-info" style="width: 0%; transition: width 0.6s ease;"></div>
                             </div>
                         </div>
+                        <!-- Live CPU Sparkline SVG -->
+                        <div class="sparkline-wrapper">
+                            <svg class="sparkline-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="sparklineGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#0284c7" stop-opacity="0.8"/>
+                                        <stop offset="100%" stop-color="#0284c7" stop-opacity="0.0"/>
+                                    </linearGradient>
+                                </defs>
+                                <path id="cpuSparklineFill" class="sparkline-fill" d="M 0 30 L 100 30 Z"></path>
+                                <path id="cpuSparklinePath" class="sparkline-path" d="M 0 25 L 100 25"></path>
+                            </svg>
+                        </div>
                         <div class="mt-2 text-muted small d-flex justify-content-between">
                             <span>Processor Load</span>
-                            <span class="font-monospace">Real-time (0.1s)</span>
+                            <span class="font-monospace">Live Telemetry (5s)</span>
                         </div>
                     </div>
                 </div>
@@ -470,31 +535,61 @@
      MODALS
      ============================================================================== -->
 
-<!-- File Viewer / Editor Modal -->
+<!-- Universal File Previewer & Media Modal -->
 <div class="modal fade" id="fileEditorModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header d-flex justify-content-between align-items-center">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="bi bi-file-earmark-text text-primary fs-4"></i>
-                    <div>
-                        <h5 class="modal-title fw-bold mb-0" id="editorFileName">File Viewer</h5>
-                        <small class="text-muted font-monospace" id="editorPathHint"></small>
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content preview-theatre">
+            <div class="modal-header d-flex justify-content-between align-items-center border-secondary border-opacity-25" style="background: #090d16;">
+                <div class="d-flex align-items-center gap-2 text-truncate" style="max-width: 65%;">
+                    <span id="previewFileIcon" class="fs-4 text-info"><i class="bi bi-file-earmark-text"></i></span>
+                    <div class="text-truncate">
+                        <div class="d-flex align-items-center gap-2">
+                            <h5 class="modal-title fw-bold mb-0 text-white text-truncate" id="editorFileName">File Preview</h5>
+                            <span id="editorStatusBadge" class="badge bg-secondary px-2 py-1 small">Read Only</span>
+                        </div>
+                        <small class="text-secondary font-monospace" id="editorPathHint"></small>
                     </div>
                 </div>
-                <button class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-3">
-                <input type="hidden" id="editorFilePath">
-                <div class="mb-2 d-flex justify-content-between align-items-center">
-                    <span id="editorStatusBadge" class="badge bg-secondary px-3 py-1">Read Only</span>
-                    <small class="text-muted">UTF-8 Encoded Text View</small>
+                <div class="d-flex align-items-center gap-2">
+                    <!-- Zoom Controls (for Images) -->
+                    <div class="btn-group btn-group-sm me-2" id="imageZoomControls" style="display: none;">
+                        <button class="btn btn-outline-secondary" onclick="zoomImage(1.2)" title="Zoom In"><i class="bi bi-zoom-in"></i></button>
+                        <button class="btn btn-outline-secondary" onclick="zoomImage(0.8)" title="Zoom Out"><i class="bi bi-zoom-out"></i></button>
+                        <button class="btn btn-outline-secondary" onclick="resetZoomImage()" title="Reset Zoom"><i class="bi bi-arrows-angle-contract"></i></button>
+                    </div>
+                    <!-- Direct Download Button -->
+                    <a href="#" id="previewDownloadBtn" class="btn btn-sm btn-outline-success d-flex align-items-center gap-1" title="Download File">
+                        <i class="bi bi-download"></i> <span class="d-none d-sm-inline">Download</span>
+                    </a>
+                    <!-- Save Button (for text editor) -->
+                    <button type="button" class="btn btn-sm btn-primary" id="editorSaveBtn" onclick="saveFileContent()" style="display: none;">
+                        <i class="bi bi-check2"></i> Save Changes
+                    </button>
+                    <button class="btn-close btn-close-white ms-2" data-bs-dismiss="modal"></button>
                 </div>
-                <textarea id="fileEditorText" class="form-control font-monospace" rows="18" style="font-size: 0.88rem; tab-size: 4; background: #090d16; color: #38bdf8; border-color: #1e293b;"></textarea>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" id="editorSaveBtn" onclick="saveFileContent()"><i class="bi bi-check2"></i> Save Changes</button>
+            <div class="modal-body p-0 position-relative" style="background: #030712;">
+                <!-- Prev / Next Navigation Arrows -->
+                <button class="preview-nav-btn prev" id="previewPrevBtn" onclick="previewPrevFile()" title="Previous File (Left Arrow)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <button class="preview-nav-btn next" id="previewNextBtn" onclick="previewNextFile()" title="Next File (Right Arrow)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+
+                <!-- Media Preview Display Container -->
+                <div class="preview-media-canvas" id="previewMediaContainer">
+                    <!-- Dynamic Content inserted here by dashboard.js: Image / Video / Audio / PDF / Text Editor -->
+                    <textarea id="fileEditorText" class="form-control font-monospace m-3" rows="18" style="font-size: 0.88rem; tab-size: 4; background: #090d16; color: #38bdf8; border-color: #1e293b; display: none;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between align-items-center py-2 px-3 border-secondary border-opacity-25" style="background: #090d16;">
+                <div class="small text-secondary font-monospace" id="previewMetaDetails">
+                    Size: - | Type: -
+                </div>
+                <div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" data-bs-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
