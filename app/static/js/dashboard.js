@@ -423,129 +423,224 @@ async function openFilePreview(encodedName) {
     const name = decodeURIComponent(encodedName);
     const target = currentPath ? currentPath + '/' + name : name;
 
+    const modalEl = document.getElementById('fileEditorModal');
+    if (!modalEl) return;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
     // Track index for Prev/Next navigation
-    const fileOnlyItems = cachedFiles.filter(f => !f.is_dir);
+    const fileOnlyItems = (cachedFiles || []).filter(f => !f.is_dir);
     currentPreviewIndex = fileOnlyItems.findIndex(f => f.name === name);
 
     updatePreviewNavButtons(fileOnlyItems);
 
-    document.getElementById('editorFilePath').value = target;
-    document.getElementById('editorFileName').textContent = name;
-    document.getElementById('editorPathHint').textContent = '/' + target;
-    document.getElementById('previewDownloadBtn').href = `/api/download?path=${encodeURIComponent(target)}`;
+    const pathInput = document.getElementById('editorFilePath');
+    if (pathInput) pathInput.value = target;
+
+    const nameEl = document.getElementById('editorFileName');
+    if (nameEl) nameEl.textContent = name;
+
+    const pathHint = document.getElementById('editorPathHint');
+    if (pathHint) pathHint.textContent = '/' + target;
+
+    const downloadBtn = document.getElementById('previewDownloadBtn');
+    if (downloadBtn) downloadBtn.href = `/api/download?path=${encodeURIComponent(target)}`;
 
     const container = document.getElementById('previewMediaContainer');
     const zoomControls = document.getElementById('imageZoomControls');
     const saveBtn = document.getElementById('editorSaveBtn');
     const statusBadge = document.getElementById('editorStatusBadge');
     const metaDetails = document.getElementById('previewMetaDetails');
+    const iconEl = document.getElementById('previewFileIcon');
 
     currentImageZoom = 1.0;
-    zoomControls.style.display = 'none';
-    saveBtn.style.display = 'none';
-    statusBadge.className = 'badge bg-secondary px-2 py-1 small';
-    statusBadge.textContent = 'Preview';
+    if (zoomControls) zoomControls.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (statusBadge) {
+        statusBadge.className = 'badge bg-secondary px-2 py-1 small';
+        statusBadge.textContent = 'Preview';
+    }
+
+    // Determine file size and display
+    const currentItem = fileOnlyItems.find(f => f.name === name);
+    let sizeText = '-';
+    if (currentItem && currentItem.size !== null && currentItem.size !== undefined) {
+        if (currentItem.size < 1024) sizeText = currentItem.size + ' B';
+        else if (currentItem.size < 1024 * 1024) sizeText = (currentItem.size / 1024).toFixed(1) + ' KB';
+        else sizeText = (currentItem.size / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    // Immediately open modal for instant visual feedback
+    modal.show();
 
     const lower = name.toLowerCase();
 
     // 1. IMAGE PREVIEW
     if (/\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/.test(lower)) {
-        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-image text-purple"></i>';
-        zoomControls.style.display = 'inline-flex';
-        statusBadge.className = 'badge bg-purple-subtle text-purple border border-purple-subtle px-2 py-1 small';
-        statusBadge.textContent = 'Image Lightbox';
-        metaDetails.textContent = `Type: Raster/Vector Image | Preview Stream: /api/preview`;
+        if (iconEl) iconEl.innerHTML = '<i class="bi bi-file-earmark-image text-purple"></i>';
+        if (zoomControls) zoomControls.style.display = 'inline-flex';
+        if (statusBadge) {
+            statusBadge.className = 'badge bg-purple-subtle text-purple border border-purple-subtle px-2 py-1 small';
+            statusBadge.textContent = 'Image Lightbox';
+        }
+        if (metaDetails) metaDetails.textContent = `Size: ${sizeText} | Type: Image | Path: /${target}`;
 
-        container.innerHTML = `
-            <div class="preview-img-container" id="imgContainer">
-                <img id="activePreviewImg" src="/api/preview?path=${encodeURIComponent(target)}" alt="${safeName(name)}" style="transform: scale(1);">
-            </div>`;
+        if (container) {
+            container.innerHTML = `
+                <div class="preview-img-container" id="imgContainer">
+                    <img id="activePreviewImg" src="/api/preview?path=${encodeURIComponent(target)}" alt="${safeName(name)}" style="transform: scale(1);" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'text-center text-secondary py-5\\'><i class=\\'bi bi-file-earmark-x fs-1 text-warning d-block mb-3\\'></i><div>Unable to render image preview</div><small class=\\'text-muted\\'>File may be corrupted or in an unsupported format.</small></div>';">
+                </div>`;
+        }
 
     // 2. PDF VIEWER
     } else if (lower.endsWith('.pdf')) {
-        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-pdf text-danger"></i>';
-        statusBadge.className = 'badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 small';
-        statusBadge.textContent = 'PDF Document';
-        metaDetails.textContent = `Type: Adobe PDF Document | In-browser Rendering`;
+        if (iconEl) iconEl.innerHTML = '<i class="bi bi-file-earmark-pdf text-danger"></i>';
+        if (statusBadge) {
+            statusBadge.className = 'badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 small';
+            statusBadge.textContent = 'PDF Document';
+        }
+        if (metaDetails) metaDetails.textContent = `Size: ${sizeText} | Type: Adobe PDF Document | In-browser Rendering`;
 
-        container.innerHTML = `
-            <iframe src="/api/preview?path=${encodeURIComponent(target)}#toolbar=1" style="width: 100%; height: 75vh; border: none; border-radius: 8px;"></iframe>`;
+        if (container) {
+            container.innerHTML = `
+                <iframe src="/api/preview?path=${encodeURIComponent(target)}#toolbar=1" style="width: 100%; height: 75vh; border: none; border-radius: 8px;"></iframe>`;
+        }
 
     // 3. VIDEO PLAYER
     } else if (/\.(mp4|webm|ogg|mov|mkv|m4v)$/.test(lower)) {
-        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-play text-info"></i>';
-        statusBadge.className = 'badge bg-info-subtle text-info border border-info-subtle px-2 py-1 small';
-        statusBadge.textContent = 'Cinema Video Player';
-        metaDetails.textContent = `Type: Video Stream | HTML5 Media Player`;
+        if (iconEl) iconEl.innerHTML = '<i class="bi bi-file-earmark-play text-info"></i>';
+        if (statusBadge) {
+            statusBadge.className = 'badge bg-info-subtle text-info border border-info-subtle px-2 py-1 small';
+            statusBadge.textContent = 'Cinema Video Player';
+        }
+        if (metaDetails) metaDetails.textContent = `Size: ${sizeText} | Type: Video Stream | HTML5 Media Player`;
 
-        container.innerHTML = `
-            <div class="w-100 p-2 d-flex justify-content-center">
-                <video controls autoplay playsinline style="max-width: 100%; max-height: 72vh; border-radius: 8px; background: #000; box-shadow: 0 10px 30px rgba(0,0,0,0.6);">
-                    <source src="/api/preview?path=${encodeURIComponent(target)}">
-                    Your browser does not support HTML5 video preview.
-                </video>
-            </div>`;
+        if (container) {
+            container.innerHTML = `
+                <div class="w-100 p-3 d-flex flex-column align-items-center justify-content-center">
+                    <video controls autoplay playsinline style="max-width: 100%; max-height: 72vh; border-radius: 8px; background: #000; box-shadow: 0 10px 30px rgba(0,0,0,0.6);">
+                        <source src="/api/preview?path=${encodeURIComponent(target)}">
+                        Your browser does not support HTML5 video preview.
+                    </video>
+                </div>`;
+        }
 
     // 4. AUDIO PLAYER WITH WAVEFORM
     } else if (/\.(mp3|wav|ogg|m4a|aac|flac)$/.test(lower)) {
-        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-music text-primary"></i>';
-        statusBadge.className = 'badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 small';
-        statusBadge.textContent = 'Audio Track';
-        metaDetails.textContent = `Type: Audio File | HTML5 Sound Engine`;
+        if (iconEl) iconEl.innerHTML = '<i class="bi bi-file-earmark-music text-primary"></i>';
+        if (statusBadge) {
+            statusBadge.className = 'badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 small';
+            statusBadge.textContent = 'Audio Track';
+        }
+        if (metaDetails) metaDetails.textContent = `Size: ${sizeText} | Type: Audio File | HTML5 Sound Engine`;
 
-        container.innerHTML = `
-            <div class="w-100 p-5 d-flex flex-column align-items-center justify-content-center">
-                <div class="audio-visualizer-bars">
-                    <div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div>
-                    <div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div>
-                    <div class="audio-bar"></div><div class="audio-bar"></div>
-                </div>
-                <h5 class="text-white mb-3 fw-bold font-monospace">${escapeHtml(name)}</h5>
-                <audio controls autoplay style="width: 100%; max-width: 520px;">
-                    <source src="/api/preview?path=${encodeURIComponent(target)}">
-                </audio>
-            </div>`;
+        if (container) {
+            container.innerHTML = `
+                <div class="w-100 p-5 d-flex flex-column align-items-center justify-content-center text-center">
+                    <div class="audio-visualizer-bars">
+                        <div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div>
+                        <div class="audio-bar"></div><div class="audio-bar"></div><div class="audio-bar"></div>
+                        <div class="audio-bar"></div><div class="audio-bar"></div>
+                    </div>
+                    <h5 class="text-white mb-3 fw-bold font-monospace">${escapeHtml(name)}</h5>
+                    <audio controls autoplay style="width: 100%; max-width: 520px;">
+                        <source src="/api/preview?path=${encodeURIComponent(target)}">
+                        Your browser does not support HTML5 audio playback.
+                    </audio>
+                </div>`;
+        }
 
-    // 5. TEXT / CODE / CONFIG EDITOR
+    // 5. ARCHIVES & COMPRESSED PACKAGES
+    } else if (/\.(zip|tar|gz|bz2|xz|rar|7z|iso|dmg|bin|exe)$/.test(lower)) {
+        if (iconEl) iconEl.innerHTML = '<i class="bi bi-file-earmark-zip text-warning"></i>';
+        if (statusBadge) {
+            statusBadge.className = 'badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1 small';
+            statusBadge.textContent = 'Archive';
+        }
+        if (metaDetails) metaDetails.textContent = `Size: ${sizeText} | Type: Compressed Archive / Binary Package`;
+
+        if (container) {
+            container.innerHTML = `
+                <div class="w-100 p-5 text-center d-flex flex-column align-items-center justify-content-center">
+                    <div class="nas-stat-icon mb-3" style="width: 72px; height: 72px; font-size: 2.5rem; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-radius: 20px;">
+                        <i class="bi bi-file-earmark-zip"></i>
+                    </div>
+                    <h4 class="text-white fw-bold mb-2 font-monospace">${escapeHtml(name)}</h4>
+                    <p class="text-secondary small mb-4">Direct preview is not applicable for binary archives. Click below to download and extract.</p>
+                    <a href="/api/download?path=${encodeURIComponent(target)}" class="btn btn-warning px-4 py-2 fw-semibold shadow-sm">
+                        <i class="bi bi-download me-2"></i> Download Archive (${sizeText})
+                    </a>
+                </div>`;
+        }
+
+    // 6. TEXT / CODE / CONFIG / MARKDOWN EDITOR
     } else {
-        document.getElementById('previewFileIcon').innerHTML = '<i class="bi bi-file-earmark-code text-success"></i>';
-        metaDetails.textContent = `Type: Plaintext / Code | Monospace Editor`;
+        if (iconEl) iconEl.innerHTML = '<i class="bi bi-file-earmark-code text-success"></i>';
+        if (metaDetails) metaDetails.textContent = `Size: ${sizeText} | Type: Plaintext / Code | Monospace Editor`;
+        if (statusBadge) {
+            statusBadge.className = 'badge bg-info-subtle text-info border border-info-subtle px-2 py-1 small';
+            statusBadge.textContent = 'Loading...';
+        }
 
-        container.innerHTML = `
-            <textarea id="fileEditorText" class="form-control font-monospace m-3" rows="18" style="font-size: 0.88rem; tab-size: 4; background: #090d16; color: #38bdf8; border-color: #1e293b;"></textarea>`;
-
-        const textarea = document.getElementById('fileEditorText');
-        textarea.value = 'Loading file contents...';
+        if (container) {
+            container.innerHTML = `
+                <div class="w-100 p-3">
+                    <textarea id="fileEditorText" class="form-control font-monospace" rows="18" style="font-size: 0.88rem; tab-size: 4; background: #090d16; color: #38bdf8; border: 1px solid #1e293b; resize: vertical;" readonly>Loading file contents from NAS storage...</textarea>
+                </div>`;
+        }
 
         try {
             const res = await fetch(`/api/file/content?path=${encodeURIComponent(target)}`);
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+            const textarea = document.getElementById('fileEditorText');
+
             if (!res.ok) {
-                textarea.value = `[Unable to preview file content as text: ${data.error || 'Binary content'}]`;
-                statusBadge.textContent = 'Binary File';
+                if (container) {
+                    container.innerHTML = `
+                        <div class="w-100 p-5 text-center d-flex flex-column align-items-center justify-content-center">
+                            <div class="nas-stat-icon mb-3" style="width: 72px; height: 72px; font-size: 2.5rem; background: rgba(148, 163, 184, 0.15); color: #94a3b8; border-radius: 20px;">
+                                <i class="bi bi-file-earmark-binary"></i>
+                            </div>
+                            <h4 class="text-white fw-bold mb-2 font-monospace">${escapeHtml(name)}</h4>
+                            <p class="text-secondary small mb-4">${escapeHtml(data.error || 'This file format cannot be displayed as plain text.')}</p>
+                            <a href="/api/download?path=${encodeURIComponent(target)}" class="btn btn-outline-light px-4 py-2 fw-semibold">
+                                <i class="bi bi-download me-2"></i> Download File (${sizeText})
+                            </a>
+                        </div>`;
+                }
+                if (statusBadge) {
+                    statusBadge.className = 'badge bg-secondary px-2 py-1 small';
+                    statusBadge.textContent = 'Binary File';
+                }
                 return;
             }
 
-            textarea.value = data.content || '';
-
-            if (data.can_edit) {
-                textarea.removeAttribute('readonly');
-                saveBtn.style.display = 'inline-flex';
-                statusBadge.className = 'badge bg-success px-2 py-1 small';
-                statusBadge.textContent = 'Editable';
-            } else {
-                textarea.setAttribute('readonly', 'true');
-                saveBtn.style.display = 'none';
-                statusBadge.className = 'badge bg-secondary px-2 py-1 small';
-                statusBadge.textContent = 'Read Only';
+            if (textarea) {
+                textarea.value = data.content !== undefined ? data.content : '';
+                if (data.can_edit) {
+                    textarea.removeAttribute('readonly');
+                    if (saveBtn) saveBtn.style.display = 'inline-flex';
+                    if (statusBadge) {
+                        statusBadge.className = 'badge bg-success px-2 py-1 small';
+                        statusBadge.textContent = 'Editable';
+                    }
+                } else {
+                    textarea.setAttribute('readonly', 'true');
+                    if (saveBtn) saveBtn.style.display = 'none';
+                    if (statusBadge) {
+                        statusBadge.className = 'badge bg-secondary px-2 py-1 small';
+                        statusBadge.textContent = 'Read Only';
+                    }
+                }
             }
         } catch (err) {
-            textarea.value = '[Error fetching file text from server]';
+            const textarea = document.getElementById('fileEditorText');
+            if (textarea) textarea.value = '[Error fetching file text from server]';
+            if (statusBadge) {
+                statusBadge.className = 'badge bg-danger px-2 py-1 small';
+                statusBadge.textContent = 'Load Failed';
+            }
         }
     }
-
-    const modal = new bootstrap.Modal(document.getElementById('fileEditorModal'));
-    modal.show();
 }
 
 function safeName(str) {
@@ -557,8 +652,16 @@ function updatePreviewNavButtons(fileItems) {
     const nextBtn = document.getElementById('previewNextBtn');
     if (!prevBtn || !nextBtn) return;
 
+    if (!fileItems || fileItems.length <= 1) {
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        return;
+    }
+    prevBtn.style.display = 'flex';
+    nextBtn.style.display = 'flex';
+
     if (currentPreviewIndex <= 0) {
-        prevBtn.style.opacity = '0.3';
+        prevBtn.style.opacity = '0.25';
         prevBtn.disabled = true;
     } else {
         prevBtn.style.opacity = '1';
@@ -566,7 +669,7 @@ function updatePreviewNavButtons(fileItems) {
     }
 
     if (currentPreviewIndex >= fileItems.length - 1 || currentPreviewIndex === -1) {
-        nextBtn.style.opacity = '0.3';
+        nextBtn.style.opacity = '0.25';
         nextBtn.disabled = true;
     } else {
         nextBtn.style.opacity = '1';
@@ -575,7 +678,7 @@ function updatePreviewNavButtons(fileItems) {
 }
 
 function previewPrevFile() {
-    const fileItems = cachedFiles.filter(f => !f.is_dir);
+    const fileItems = (cachedFiles || []).filter(f => !f.is_dir);
     if (currentPreviewIndex > 0) {
         currentPreviewIndex--;
         openFilePreview(encodeURIComponent(fileItems[currentPreviewIndex].name));
@@ -583,7 +686,7 @@ function previewPrevFile() {
 }
 
 function previewNextFile() {
-    const fileItems = cachedFiles.filter(f => !f.is_dir);
+    const fileItems = (cachedFiles || []).filter(f => !f.is_dir);
     if (currentPreviewIndex < fileItems.length - 1 && currentPreviewIndex !== -1) {
         currentPreviewIndex++;
         openFilePreview(encodeURIComponent(fileItems[currentPreviewIndex].name));
@@ -605,8 +708,15 @@ function resetZoomImage() {
 }
 
 async function saveFileContent() {
-    const path = document.getElementById('editorFilePath').value;
-    const content = document.getElementById('fileEditorText').value;
+    const pathInput = document.getElementById('editorFilePath');
+    const path = pathInput ? pathInput.value : '';
+    const textEl = document.getElementById('fileEditorText');
+    const content = textEl ? textEl.value : '';
+
+    if (!path) {
+        showToast("Error", "No active file selected to save.", "danger");
+        return;
+    }
 
     try {
         const res = await fetch('/api/file/content', {
@@ -618,8 +728,10 @@ async function saveFileContent() {
         if (res.ok) {
             showToast("File Saved", "Changes written to storage successfully.", "success");
             const modalEl = document.getElementById('fileEditorModal');
-            const modalInstance = bootstrap.Modal.getInstance(modalEl);
-            if (modalInstance) modalInstance.hide();
+            if (modalEl) {
+                const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                if (modalInstance) modalInstance.hide();
+            }
             fetchFiles();
         } else {
             showToast("Save Failed", data.error || "Failed to save file.", "danger");
@@ -1190,6 +1302,9 @@ function initKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
         const previewModal = document.getElementById('fileEditorModal');
         if (previewModal && previewModal.classList.contains('show')) {
+            const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+            if (tag === 'textarea' || tag === 'input') return;
+
             if (e.key === 'ArrowLeft') {
                 previewPrevFile();
             } else if (e.key === 'ArrowRight') {
@@ -1197,6 +1312,22 @@ function initKeyboardShortcuts() {
             }
         }
     });
+
+    const previewModal = document.getElementById('fileEditorModal');
+    if (previewModal) {
+        previewModal.addEventListener('hidden.bs.modal', () => {
+            const container = document.getElementById('previewMediaContainer');
+            if (container) {
+                container.querySelectorAll('video, audio').forEach(el => {
+                    try {
+                        el.pause();
+                        el.removeAttribute('src');
+                        el.load();
+                    } catch (e) {}
+                });
+            }
+        });
+    }
 }
 
 // 16. Lifecycle Initialization

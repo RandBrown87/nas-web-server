@@ -106,6 +106,38 @@ class TestFileEditorPermissions(unittest.TestCase):
         self.assertIn("Initial Content", res.data.decode('utf-8'))
         self.assertEqual(res.headers.get('Content-Disposition'), 'inline; filename=editor_sample.txt')
 
+    def test_preview_media_mimetypes(self):
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = 1
+            sess['username'] = 'admin'
+            sess['is_admin'] = True
+
+        # Test image file preview
+        img_name = "test_image.png"
+        img_path = os.path.join(Config.STORAGE_DIR, img_name)
+        with open(img_path, "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4")
+        try:
+            res_img = self.client.get(f'/api/preview?path={img_name}')
+            self.assertEqual(res_img.status_code, 200)
+            self.assertIn('image/png', res_img.content_type)
+        finally:
+            if os.path.exists(img_path):
+                os.remove(img_path)
+
+        # Test PDF file preview
+        pdf_name = "test_doc.pdf"
+        pdf_path = os.path.join(Config.STORAGE_DIR, pdf_name)
+        with open(pdf_path, "wb") as f:
+            f.write(b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF")
+        try:
+            res_pdf = self.client.get(f'/api/preview?path={pdf_name}')
+            self.assertEqual(res_pdf.status_code, 200)
+            self.assertIn('application/pdf', res_pdf.content_type)
+        finally:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+
 
 if __name__ == '__main__':
     unittest.main()
