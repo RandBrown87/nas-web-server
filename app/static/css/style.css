@@ -1,8 +1,535 @@
-body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
-.navbar { background-color: #1e293b; }
-.nav-pills .nav-link.active { background-color: #0284c7; }
-.card { border-radius: 10px; border: 1px solid #e2e8f0; }
-.log-box { background: #0f172a; color: #38bdf8; height: 180px; overflow-y: auto; padding: 12px; border-radius: 6px; font-size: 0.85rem; }
-.login-wrapper { background: #0f172a; height: 100vh; display: flex; align-items: center; justify-content: center; }
-.login-card { width: 380px; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-.login-card .card-header { background: #1e293b; color: #38bdf8; font-weight: bold; text-align: center; font-size: 1.3rem; padding: 16px; }
+/* ==============================================================================
+   LINUX NAS WEB SERVER - INNOVATIVE DESIGN SYSTEM
+   Modern Enterprise NAS UI - Glassmorphic, Responsive, Animated Micro-interactions
+   ============================================================================== */
+
+:root {
+    --nas-primary: #0284c7;
+    --nas-primary-hover: #0369a1;
+    --nas-primary-light: #e0f2fe;
+    --nas-primary-glow: rgba(2, 132, 199, 0.35);
+
+    --nas-dark-bg: #0b1120;
+    --nas-dark-surface: #0f172a;
+    --nas-dark-card: #1e293b;
+    --nas-dark-border: rgba(255, 255, 255, 0.08);
+
+    --nas-light-bg: #f8fafc;
+    --nas-light-card: #ffffff;
+    --nas-light-border: #e2e8f0;
+
+    --nas-emerald: #10b981;
+    --nas-emerald-glow: rgba(16, 185, 129, 0.3);
+    --nas-amber: #f59e0b;
+    --nas-amber-glow: rgba(245, 158, 11, 0.3);
+    --nas-crimson: #ef4444;
+    --nas-crimson-glow: rgba(239, 68, 68, 0.35);
+    --nas-cyan: #06b6d4;
+
+    --nas-font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --nas-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* 1. Global Reset & Base */
+body.nas-app {
+    font-family: var(--nas-font-sans);
+    background-color: var(--nas-light-bg);
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(2, 132, 199, 0.04) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
+    color: #1e293b;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* 2. Sleek Glass Navbar */
+.nas-navbar {
+    background: rgba(15, 23, 42, 0.88);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--nas-dark-border);
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+}
+
+.nas-brand {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    text-decoration: none;
+}
+
+.nas-brand-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, #0284c7 0%, #06b6d4 100%);
+    color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px var(--nas-primary-glow);
+    font-size: 1.15rem;
+    transition: transform 0.25s ease;
+}
+
+.nas-brand:hover .nas-brand-icon {
+    transform: rotate(5deg) scale(1.05);
+}
+
+/* Heartbeat Status Dot */
+.heartbeat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 12px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #34d399;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 0 rgba(16, 185, 129, 0.5);
+    animation: pulse-ring 2s infinite;
+}
+
+@keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* User Profile Badge in Nav */
+.user-profile-badge {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: #e2e8f0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 3. Innovative Nav Pills / Tabs */
+.nas-nav-pills {
+    background: #ffffff;
+    padding: 6px;
+    border-radius: 14px;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+    border: 1px solid var(--nas-light-border);
+    gap: 6px;
+}
+
+.nas-nav-pills .nav-link {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #64748b;
+    padding: 9px 18px;
+    border-radius: 10px;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid transparent;
+}
+
+.nas-nav-pills .nav-link:hover {
+    color: var(--nas-primary);
+    background: #f1f5f9;
+}
+
+.nas-nav-pills .nav-link.active {
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 14px var(--nas-primary-glow);
+    border-color: rgba(2, 132, 199, 0.2);
+    transform: translateY(-1px);
+}
+
+/* 4. Modern Cards & Surfaces */
+.nas-card {
+    background: #ffffff;
+    border-radius: 14px;
+    border: 1px solid var(--nas-light-border);
+    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+    transition: all 0.25s ease;
+    overflow: hidden;
+}
+
+.nas-card:hover {
+    box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.07);
+}
+
+.nas-stat-card {
+    border-radius: 14px;
+    background: #ffffff;
+    border: 1px solid var(--nas-light-border);
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.nas-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.08);
+}
+
+.nas-stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--card-accent, #0284c7);
+}
+
+.nas-stat-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    background: rgba(2, 132, 199, 0.08);
+    color: var(--nas-primary);
+}
+
+/* 5. Modern File Manager & Breadcrumbs */
+.breadcrumb-container {
+    background: #f8fafc;
+    border: 1px solid var(--nas-light-border);
+    padding: 6px 14px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.875rem;
+}
+
+.breadcrumb-crumb {
+    color: #0284c7;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.15s ease;
+}
+
+.breadcrumb-crumb:hover {
+    color: #0369a1;
+    text-decoration: underline;
+}
+
+.breadcrumb-sep {
+    color: #94a3b8;
+    margin: 0 7px;
+    font-size: 0.8rem;
+}
+
+.file-dropzone-wrapper {
+    background: #f8fafc;
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    transition: all 0.25s ease;
+}
+
+.file-dropzone-wrapper.dragover {
+    background: #f0f9ff;
+    border-color: #0284c7;
+    box-shadow: 0 0 15px var(--nas-primary-glow);
+}
+
+.search-input-group {
+    position: relative;
+    max-width: 260px;
+}
+
+.search-input-group i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+.search-input-group input {
+    padding-left: 36px;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    border: 1px solid var(--nas-light-border);
+}
+
+/* Table Enhancements */
+.nas-table {
+    margin-bottom: 0;
+}
+
+.nas-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--nas-light-border);
+}
+
+.nas-table tbody tr {
+    transition: background-color 0.18s ease;
+}
+
+.nas-table tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+.nas-table tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.file-icon-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    margin-right: 10px;
+    font-size: 1.15rem;
+}
+
+.file-icon-dir { background: #fef3c7; color: #d97706; }
+.file-icon-pdf { background: #fee2e2; color: #dc2626; }
+.file-icon-img { background: #f3e8ff; color: #9333ea; }
+.file-icon-code { background: #dcfce7; color: #16a34a; }
+.file-icon-archive { background: #ffedd5; color: #ea580c; }
+.file-icon-txt { background: #e0f2fe; color: #0284c7; }
+
+/* 6. System Monitoring - Live Gauges & Terminal Logs */
+.metric-progress-wrapper {
+    margin-top: 0.75rem;
+}
+
+.metric-progress {
+    height: 8px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    overflow: hidden;
+}
+
+.metric-progress .progress-bar {
+    border-radius: 999px;
+    transition: width 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Terminal Log View */
+.terminal-window {
+    background: #090d16;
+    border-radius: 12px;
+    border: 1px solid #1e293b;
+    overflow: hidden;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.terminal-header {
+    background: #0f172a;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #1e293b;
+}
+
+.terminal-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.terminal-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.terminal-dot.red { background: #ef4444; }
+.terminal-dot.yellow { background: #f59e0b; }
+.terminal-dot.green { background: #10b981; }
+
+.log-box {
+    background: #090d16;
+    color: #38bdf8;
+    height: 220px;
+    overflow-y: auto;
+    padding: 14px 18px;
+    font-family: var(--nas-font-mono);
+    font-size: 0.82rem;
+    line-height: 1.6;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* 7. Security Tab & WAF Pulse Radar */
+.radar-shield-icon {
+    position: relative;
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(245, 158, 11, 0.15) 100%);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    color: #ef4444;
+}
+
+.radar-shield-icon::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 18px;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    animation: radar-sweep 2.5s infinite ease-out;
+}
+
+@keyframes radar-sweep {
+    0% { transform: scale(0.95); opacity: 0.8; }
+    100% { transform: scale(1.3); opacity: 0; }
+}
+
+/* 8. Modals & Notifications */
+.modal-content {
+    border-radius: 16px;
+    border: 1px solid var(--nas-light-border);
+    box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.25);
+    overflow: hidden;
+}
+
+.modal-header {
+    background: #f8fafc;
+    border-bottom: 1px solid var(--nas-light-border);
+    padding: 1.1rem 1.5rem;
+}
+
+.modal-footer {
+    background: #f8fafc;
+    border-top: 1px solid var(--nas-light-border);
+    padding: 1rem 1.5rem;
+}
+
+/* 9. Login & Registration Screen */
+.login-wrapper {
+    background: #090d16;
+    background-image: 
+        radial-gradient(at 10% 10%, rgba(2, 132, 199, 0.15) 0px, transparent 40%),
+        radial-gradient(at 90% 90%, rgba(6, 182, 212, 0.1) 0px, transparent 40%),
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.login-card {
+    width: 420px;
+    max-width: 100%;
+    background: rgba(15, 23, 42, 0.82) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 18px !important;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7) !important;
+    color: #e2e8f0;
+}
+
+.login-card .card-header {
+    background: transparent !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 1.75rem 1.5rem 1.25rem !important;
+    text-align: center;
+}
+
+.login-card .form-control {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #f8fafc;
+    border-radius: 10px;
+    padding: 0.65rem 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.login-card .form-control:focus {
+    background: rgba(30, 41, 59, 0.95);
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+    color: #ffffff;
+}
+
+.login-card .form-label {
+    color: #cbd5e1;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.btn-primary-gradient {
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    border: none;
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 4px 14px var(--nas-primary-glow);
+    transition: all 0.22s ease;
+}
+
+.btn-primary-gradient:hover {
+    background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+    box-shadow: 0 6px 18px var(--nas-primary-glow);
+    transform: translateY(-1px);
+    color: white;
+}
+
+/* Badge Tweaks */
+.badge-role-admin { background: #f59e0b; color: #1e293b; font-weight: 700; }
+.badge-role-user { background: #0284c7; color: white; }
+.badge-role-editor { background: #06b6d4; color: #1e293b; font-weight: 600; }
+.badge-role-readonly { background: #64748b; color: white; }
