@@ -1,0 +1,33 @@
+[Unit]
+Description=Linux NAS Web Server Service (Gunicorn WSGI)
+After=network.target mysql.service clamav-daemon.service
+Wants=mysql.service clamav-daemon.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/srv/nas-web-server
+Environment="PATH=/srv/nas-web-server/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="DB_HOST=localhost"
+Environment="DB_USER=nas_user"
+Environment="DB_PASS=NasPassword123!"
+Environment="DB_NAME=nas_db"
+Environment="SECRET_KEY=nas_super_secret_key_2026_prod"
+
+ExecStart=/srv/nas-web-server/venv/bin/gunicorn \
+    --workers 4 \
+    --worker-class sync \
+    --bind 127.0.0.1:5050 \
+    --access-logfile /var/log/nas_gunicorn_access.log \
+    --error-logfile /var/log/nas_gunicorn_error.log \
+    "run:app"
+
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

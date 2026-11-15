@@ -6,6 +6,7 @@ from werkzeug.utils import secure_filename
 from config import Config
 from app.database import get_db
 from app.decorators import login_required
+from app.scanner import scan_file
 
 files_bp = Blueprint('files', __name__)
 
@@ -107,7 +108,55 @@ def upload():
         conn.close()
         return jsonify({'error': 'A private file already exists with this name'}), 403
 
-    file.save(dest)
+    # Stage upload in Quarantine folder first for Antivirus scanning
+    os.makedirs(Config.QUARANTINE_DIR, exist_ok=True)
+    temp_quarantine_path = os.path.join(
+        Config.QUARANTINE_DIR,
+        f"staging_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
+    )
+    file.save(temp_quarantine_path)
+
+    # Scan staged file with ClamAV Malware Protection Gateway
+    scan_result = scan_file(temp_quarantine_path)
+
+    if scan_result.get('status') == 'infected':
+        threat = scan_result.get('threat', 'Malware.Detected')
+        quarantine_dest = os.path.join(
+            Config.QUARANTINE_DIR,
+            f"quarantine_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
+        )
+        os.rename(temp_quarantine_path, quarantine_dest)
+
+        # Log infected attempt to security_scans table
+        cursor.execute("""
+            INSERT INTO security_scans (filename, file_path, uploaded_by, scan_result, threat_name, is_quarantined)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (filename, quarantine_dest, session['user_id'], 'infected', threat, True))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'error': f"Malware Detected ({threat})! File has been blocked and quarantined.",
+            'threat': threat,
+            'quarantined': True
+        }), 422
+
+    # Clean file: Move from quarantine to NAS storage
+    try:
+        shutil.move(temp_quarantine_path, dest)
+    except Exception as e:
+        if os.path.exists(temp_quarantine_path):
+            os.remove(temp_quarantine_path)
+        cursor.close()
+        conn.close()
+        return jsonify({'error': f'Failed to store clean file: {str(e)}'}), 500
+
+    # Log clean scan
+    cursor.execute("""
+        INSERT INTO security_scans (filename, file_path, uploaded_by, scan_result, threat_name, is_quarantined)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (filename, abs_dest, session['user_id'], 'clean', None, False))
 
     if existing:
         cursor.execute(
@@ -123,7 +172,7 @@ def upload():
     cursor.close()
     conn.close()
 
-    return jsonify({'success': True, 'filename': filename, 'is_private': is_private})
+    return jsonify({'success': True, 'filename': filename, 'is_private': is_private, 'scan_result': 'clean'})
 
 @files_bp.route('/api/files/visibility', methods=['POST'])
 @login_required
@@ -186,6 +235,43 @@ def download():
             return jsonify({'error': 'Access denied: private file'}), 403
 
     return send_file(path, as_attachment=True)
+
+@files_bp.route('/api/preview')
+@login_required
+def preview():
+    try:
+        path = safe_path(request.args.get('path', ''))
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.isfile(path):
+        return jsonify({'error': 'File not found'}), 404
+
+    abs_path = os.path.abspath(path)
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_path,))
+    meta = cursor.fetchone()
+    cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Private files can strictly ONLY be previewed by the user who uploaded them
+    if meta and meta.get('is_private'):
+        if meta.get('uploaded_by') != session.get('user_id'):
+            return jsonify({'error': 'Access denied: private file'}), 403
+
+    import mimetypes
+    mimetype, _ = mimetypes.guess_type(path)
+    if not mimetype:
+        ext = os.path.splitext(path)[1].lower()
+        if ext in ['.py', '.js', '.ts', '.html', '.css', '.json', '.sql', '.sh', '.md', '.log', '.csv']:
+            mimetype = 'text/plain; charset=utf-8'
+        else:
+            mimetype = 'application/octet-stream'
+
+    return send_file(path, mimetype=mimetype, as_attachment=False)
+
 
 @files_bp.route('/api/mkdir', methods=['POST'])
 @login_required
@@ -261,3 +347,187 @@ def delete():
     cursor.close()
     conn.close()
     return jsonify({'success': True})
+
+@files_bp.route('/api/rename', methods=['POST'])
+@login_required
+def rename_item():
+    data = request.json or {}
+    old_path = data.get('old_path', '').strip()
+    new_name = data.get('new_name', '').strip()
+
+    if not old_path or not new_name:
+        return jsonify({'error': 'Old path and new name are required'}), 400
+
+    if '/' in new_name or '\\' in new_name or '..' in new_name:
+        return jsonify({'error': 'Invalid new name'}), 400
+
+    sanitized_new_name = secure_filename(new_name)
+    if not sanitized_new_name:
+        return jsonify({'error': 'Invalid new name'}), 400
+
+    try:
+        old_abs = safe_path(old_path)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.exists(old_abs):
+        return jsonify({'error': 'Item not found'}), 404
+
+    parent_dir = os.path.dirname(old_abs)
+    new_abs = os.path.abspath(os.path.join(parent_dir, sanitized_new_name))
+
+    base = os.path.abspath(Config.STORAGE_DIR)
+    if not new_abs.startswith(base):
+        return jsonify({'error': 'Invalid target path'}), 400
+
+    if os.path.exists(new_abs):
+        return jsonify({'error': f"An item named '{sanitized_new_name}' already exists"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (old_abs,))
+    meta = cursor.fetchone()
+    cursor.fetchall()
+
+    is_owner = (meta and meta['uploaded_by'] == session.get('user_id'))
+    if meta and meta.get('is_private') and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Access denied: private item'}), 403
+
+    if not session.get('can_write') and not session.get('is_admin') and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Write permission required'}), 403
+
+    is_dir = os.path.isdir(old_abs)
+
+    try:
+        os.rename(old_abs, new_abs)
+    except Exception as e:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': f'Filesystem rename failed: {str(e)}'}), 500
+
+    if meta:
+        cursor.execute(
+            "UPDATE file_metadata SET filename = %s, file_path = %s WHERE id = %s",
+            (sanitized_new_name, new_abs, meta['id'])
+        )
+    else:
+        file_size = 0 if is_dir else os.path.getsize(new_abs)
+        cursor.execute(
+            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by) VALUES (%s, %s, %s, %s)",
+            (sanitized_new_name, new_abs, file_size, session.get('user_id'))
+        )
+
+    if is_dir:
+        old_prefix = old_abs + '/'
+        new_prefix = new_abs + '/'
+        cursor.execute(
+            "UPDATE file_metadata SET file_path = CONCAT(%s, SUBSTRING(file_path, %s)) WHERE file_path LIKE %s",
+            (new_prefix, len(old_prefix) + 1, old_prefix + '%')
+        )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({'success': True, 'new_name': sanitized_new_name})
+
+@files_bp.route('/api/file/content', methods=['GET', 'POST'])
+@login_required
+def file_content():
+    if request.method == 'GET':
+        req_path = request.args.get('path', '')
+        try:
+            target = safe_path(req_path)
+        except ValueError:
+            return jsonify({'error': 'Invalid path'}), 400
+
+        if not os.path.isfile(target):
+            return jsonify({'error': 'File not found'}), 404
+
+        abs_target = os.path.abspath(target)
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_target,))
+        meta = cursor.fetchone()
+        cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        is_owner = (meta and meta['uploaded_by'] == session.get('user_id'))
+        if meta and meta.get('is_private') and not is_owner:
+            return jsonify({'error': 'Access denied: private file'}), 403
+
+        if os.path.getsize(target) > 5 * 1024 * 1024:
+            return jsonify({'error': 'File too large for inline editing (max 5MB)'}), 400
+
+        try:
+            with open(target, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+        except Exception as e:
+            return jsonify({'error': f'Cannot read file: {str(e)}'}), 500
+
+        can_edit = bool(session.get('can_edit') or session.get('is_admin') or is_owner)
+        return jsonify({
+            'path': req_path,
+            'filename': os.path.basename(target),
+            'content': content,
+            'can_edit': can_edit
+        })
+
+    data = request.json or {}
+    req_path = data.get('path', '')
+    content = data.get('content', '')
+
+    try:
+        target = safe_path(req_path)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.isfile(target):
+        return jsonify({'error': 'File not found'}), 404
+
+    abs_target = os.path.abspath(target)
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_target,))
+    meta = cursor.fetchone()
+    cursor.fetchall()
+
+    is_owner = (meta and meta['uploaded_by'] == session.get('user_id'))
+    if meta and meta.get('is_private') and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Access denied: private file'}), 403
+
+    if not session.get('can_edit') and not session.get('is_admin') and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Edit permission required'}), 403
+
+    try:
+        with open(target, 'w', encoding='utf-8') as f:
+            f.write(content)
+    except Exception as e:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
+
+    new_size = os.path.getsize(target)
+    if meta:
+        cursor.execute("UPDATE file_metadata SET file_size = %s WHERE id = %s", (new_size, meta['id']))
+    else:
+        cursor.execute(
+            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by) VALUES (%s, %s, %s, %s)",
+            (os.path.basename(target), abs_target, new_size, session.get('user_id'))
+        )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({'success': True, 'file_size': new_size})
+
+
