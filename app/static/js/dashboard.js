@@ -171,16 +171,20 @@ function renderFileList(items) {
 
         const uploaderHtml = `<span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-person-fill text-primary me-1"></i>${escapeHtml(item.uploader || 'System')}</span>`;
 
-        const visibilityHtml = item.is_private
-            ? `<span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1" title="Hidden: Visible only to your account"><i class="bi bi-lock-fill"></i> Private</span>`
-            : `<span class="badge bg-light text-muted border px-2 py-1" title="Visible to all users"><i class="bi bi-globe me-1"></i>Public</span>`;
+        // File Access Modifier Badge
+        const access = item.access_level || (item.is_private ? 'private' : 'editable');
+        let accessBadge = '';
+        if (access === 'private') {
+            accessBadge = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1" title="Private: Restricted to owner & admin"><i class="bi bi-shield-lock-fill me-1"></i>Private</span>`;
+        } else if (access === 'readonly') {
+            accessBadge = `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-1" title="Read-Only: Locked from inline editing"><i class="bi bi-lock-fill me-1"></i>Read-Only</span>`;
+        } else {
+            accessBadge = `<span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1" title="Editable: Open for editing by authorized accounts"><i class="bi bi-pencil-fill me-1"></i>Editable</span>`;
+        }
 
-        let toggleVisibilityBtn = '';
-        if (item.can_toggle) {
-            const toggleIcon = item.is_private ? 'bi-unlock' : 'bi-lock';
-            const toggleTitle = item.is_private ? 'Make Public' : 'Make Private';
-            const btnClass = item.is_private ? 'btn-outline-warning' : 'btn-outline-secondary';
-            toggleVisibilityBtn = `<button class="btn btn-sm ${btnClass}" onclick="toggleVisibility('${encodeURIComponent(item.name)}')" title="${toggleTitle}"><i class="bi ${toggleIcon}"></i></button>`;
+        let accessBtn = '';
+        if (item.can_change_access || item.can_toggle) {
+            accessBtn = `<button class="btn btn-outline-secondary" onclick="openFileAccessModal('${encodeURIComponent(item.name)}', '${access}')" title="Modify Access Permissions (Read-Only / Editable / Private)"><i class="bi bi-shield-lock"></i></button>`;
         }
 
         const filePath = currentPath ? currentPath + '/' + item.name : item.name;
@@ -195,14 +199,14 @@ function renderFileList(items) {
             <td><span class="badge bg-light text-secondary border">${item.is_dir ? 'Directory' : 'File'}</span></td>
             <td><span class="font-monospace small">${sizeText}</span></td>
             <td>${uploaderHtml}</td>
-            <td>${visibilityHtml}</td>
+            <td>${accessBadge}</td>
             <td><span class="small text-muted font-monospace">${item.modified}</span></td>
             <td class="text-end">
                 <div class="btn-group btn-group-sm shadow-sm" style="border-radius: 8px; overflow: hidden;">
                     ${!item.is_dir ? `<button class="btn btn-outline-info" onclick="openFilePreview('${encodeURIComponent(item.name)}')" title="Preview / View / Edit"><i class="bi bi-eye"></i></button>` : ''}
                     ${!item.is_dir ? `<a href="/api/download?path=${encodeURIComponent(filePath)}" class="btn btn-outline-success" title="Download File"><i class="bi bi-download"></i></a>` : ''}
                     <button class="btn btn-outline-primary" onclick="openRenameModal('${encodeURIComponent(item.name)}')" title="Rename"><i class="bi bi-pencil"></i></button>
-                    ${toggleVisibilityBtn}
+                    ${accessBtn}
                     <button class="btn btn-outline-danger" onclick="deleteItem('${encodeURIComponent(item.name)}')" title="Delete"><i class="bi bi-trash"></i></button>
                 </div>
             </td>
@@ -314,15 +318,20 @@ function navigateUp() {
 async function uploadFile() {
     const input = document.getElementById('fileInput');
     const privateCheck = document.getElementById('privateCheck');
+    const accessSelect = document.getElementById('uploadAccessSelect');
     if (!input.files[0]) {
         showToast("Upload Notice", "Please select a file to upload first.", "warning");
         return;
     }
 
+    const accessLevel = accessSelect ? accessSelect.value : 'editable';
+
     const fd = new FormData();
     fd.append('file', input.files[0]);
     fd.append('path', currentPath);
-    if (privateCheck && privateCheck.checked) {
+    fd.append('access_level', accessLevel);
+
+    if (accessLevel === 'private' || (privateCheck && privateCheck.checked)) {
         fd.append('is_private', 'true');
     }
 
@@ -341,6 +350,59 @@ async function uploadFile() {
         }
     } catch (err) {
         showToast("Upload Error", "Failed to communicate with upload server.", "danger");
+    }
+}
+
+function openFileAccessModal(encodedName, currentAccess) {
+    const name = decodeURIComponent(encodedName);
+    const target = currentPath ? currentPath + '/' + name : name;
+
+    const pathInput = document.getElementById('accessFilePath');
+    const nameLabel = document.getElementById('accessFileName');
+    if (pathInput) pathInput.value = target;
+    if (nameLabel) nameLabel.textContent = name;
+
+    const access = currentAccess || 'editable';
+    const rEdit = document.getElementById('accessEditable');
+    const rRead = document.getElementById('accessReadonly');
+    const rPriv = document.getElementById('accessPrivate');
+
+    if (access === 'readonly' && rRead) rRead.checked = true;
+    else if (access === 'private' && rPriv) rPriv.checked = true;
+    else if (rEdit) rEdit.checked = true;
+
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('fileAccessModal'));
+    modal.show();
+}
+
+async function submitFileAccess() {
+    const pathInput = document.getElementById('accessFilePath');
+    const path = pathInput ? pathInput.value : '';
+    const selected = document.querySelector('input[name="accessLevelRadio"]:checked');
+    const accessLevel = selected ? selected.value : 'editable';
+
+    if (!path) return;
+
+    try {
+        const res = await fetch('/api/files/access', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ path: path, access_level: accessLevel })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            showToast("Permissions Saved", `File access modifier updated to: ${accessLevel}`, "success");
+            const modalEl = document.getElementById('fileAccessModal');
+            if (modalEl) {
+                const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                if (modalInstance) modalInstance.hide();
+            }
+            fetchFiles();
+        } else {
+            showToast("Access Error", data.error || "Failed to update access modifier.", "danger");
+        }
+    } catch (err) {
+        showToast("Error", "Server error while changing file permissions.", "danger");
     }
 }
 
@@ -628,7 +690,8 @@ async function openFilePreview(encodedName) {
                     if (saveBtn) saveBtn.style.display = 'none';
                     if (statusBadge) {
                         statusBadge.className = 'badge bg-secondary px-2 py-1 small';
-                        statusBadge.textContent = 'Read Only';
+                        statusBadge.textContent = data.lock_reason ? `Read-Only (${data.lock_reason})` : 'Read Only';
+                        if (data.lock_reason) statusBadge.title = data.lock_reason;
                     }
                 }
             }
@@ -989,21 +1052,43 @@ async function fetchBackups() {
         const data = await res.json();
         const tbody = document.getElementById('backupTableBody');
         tbody.innerHTML = '';
+
+        // Update Top Summary Cards
+        const summaryLastEl = document.getElementById('summaryLastBackupTime');
+        const summaryTotalEl = document.getElementById('summaryTotalArchives');
+        const summarySizeEl = document.getElementById('summaryTotalSize');
+
+        if (summaryLastEl) {
+            summaryLastEl.textContent = data.latest_backup_time || 'No backups yet';
+        }
+        if (summaryTotalEl) {
+            summaryTotalEl.textContent = data.total_archives !== undefined ? data.total_archives : (data.backups ? data.backups.length : 0);
+        }
+        if (summarySizeEl) {
+            const szMb = data.total_size_bytes ? (data.total_size_bytes / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
+            summarySizeEl.textContent = `${szMb} Total Volume`;
+        }
+
         if (!data.backups || data.backups.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No backups created yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No backups created yet.</td></tr>';
             return;
         }
+
         data.backups.forEach(b => {
             const sizeMb = b.size_bytes ? (b.size_bytes / (1024 * 1024)).toFixed(2) + ' MB' : '-';
+            const dateStr = b.date_formatted || (b.created_at ? String(b.created_at).split(' ')[0] : '-');
+            const timeStr = b.time_formatted || (b.created_at ? (String(b.created_at).split(' ')[1] || '') : '');
+
             tbody.innerHTML += `
                 <tr>
                     <td><strong class="font-monospace text-dark">${escapeHtml(b.backup_name)}</strong></td>
                     <td><span class="font-monospace small">${sizeMb}</span></td>
                     <td><span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1"><i class="bi bi-check2 me-1"></i>${escapeHtml(b.status || 'completed')}</span></td>
-                    <td><span class="small text-muted font-monospace">${b.created_at}</span></td>
+                    <td><span class="badge bg-light text-dark border font-monospace px-2 py-1"><i class="bi bi-calendar3 me-1 text-primary"></i>${escapeHtml(dateStr)}</span></td>
+                    <td><span class="badge bg-light text-muted border font-monospace px-2 py-1"><i class="bi bi-clock me-1 text-secondary"></i>${escapeHtml(timeStr)}</span></td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-warning shadow-sm" onclick="restoreBackup('${encodeURIComponent(b.backup_name)}')">
-                            <i class="bi bi-arrow-counterclockwise"></i> Restore
+                            <i class="bi bi-arrow-counterclockwise me-1"></i> Restore
                         </button>
                     </td>
                 </tr>`;
@@ -1034,11 +1119,29 @@ async function fetchBackupSchedule() {
             badge.textContent = 'Disabled';
         }
 
-        const lastRunText = s.last_run ? s.last_run : 'Never';
-        const nextRunText = s.next_run ? s.next_run : (s.enabled ? 'Pending evaluation' : 'Disabled');
-        document.getElementById('scheduleRunTimes').innerHTML = `Last Run: <strong>${lastRunText}</strong> | Next Run: <strong>${nextRunText}</strong>`;
+        const lastRunText = s.last_run_formatted || s.last_run || 'Never';
+        const nextRunText = s.next_run_formatted || s.next_run || (s.enabled ? 'Pending evaluation' : 'Disabled');
+        document.getElementById('scheduleRunTimes').innerHTML = `<i class="bi bi-clock me-1"></i> Last Run: <strong>${lastRunText}</strong> | <i class="bi bi-calendar-event me-1"></i> Next Run: <strong>${nextRunText}</strong>`;
+
+        const summaryNextEl = document.getElementById('summaryNextBackupTime');
+        const summarySchedEl = document.getElementById('summarySchedStatus');
+        if (summaryNextEl) summaryNextEl.textContent = nextRunText;
+        if (summarySchedEl) summarySchedEl.textContent = s.enabled ? `Enabled (${s.frequency} at ${s.backup_time})` : 'Scheduler Disabled';
     } catch (err) {
         console.error("Schedule fetch error:", err);
+    }
+}
+
+async function testFallbackSimulation() {
+    if (!confirm("Simulate Primary Outage and trigger Fallback Server failover?")) return;
+    try {
+        const res = await fetch('http://localhost:5050/api/fallback/simulate-failover', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        showToast("Failover Simulated", "Fallback server (port 5050) has assumed active traffic using latest backup.", "warning");
+        window.open('http://localhost:5050', '_blank');
+    } catch (err) {
+        showToast("Fallback Node", "Fallback server is on standby (Port 5050). Launch 'python fallback_server.py' to activate node.", "info");
+        window.open('http://localhost:5050', '_blank');
     }
 }
 

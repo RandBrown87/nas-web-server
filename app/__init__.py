@@ -15,6 +15,19 @@ def init_db():
         except Exception:
             pass
 
+        # Ensure access_level column exists in file_metadata ('editable', 'readonly', 'private')
+        try:
+            cursor.execute("ALTER TABLE file_metadata ADD COLUMN access_level VARCHAR(20) DEFAULT 'editable'")
+            conn.commit()
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("UPDATE file_metadata SET access_level = 'private' WHERE is_private = TRUE AND (access_level IS NULL OR access_level = 'editable')")
+            conn.commit()
+        except Exception:
+            pass
+
         # Ensure can_edit column exists in roles
         try:
             cursor.execute("ALTER TABLE roles ADD COLUMN can_edit BOOLEAN DEFAULT TRUE")

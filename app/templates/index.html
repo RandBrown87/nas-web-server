@@ -141,13 +141,13 @@
 
                     <!-- File Action Tools -->
                     <div class="d-flex flex-wrap gap-2 align-items-center">
-                        <input type="file" id="fileInput" class="form-control form-control-sm" style="max-width: 200px;">
-                        <div class="form-check form-check-inline m-0" title="Keep this upload private (visible only to your account)">
-                            <input class="form-check-input" type="checkbox" id="privateCheck">
-                            <label class="form-check-label small fw-semibold text-secondary" for="privateCheck">
-                                <i class="bi bi-lock-fill text-danger"></i> Private
-                            </label>
-                        </div>
+                        <input type="file" id="fileInput" class="form-control form-control-sm" style="max-width: 190px;">
+                        <select id="uploadAccessSelect" class="form-select form-select-sm" style="max-width: 175px;" title="Set initial file access level">
+                            <option value="editable" selected>🌐 Public (Editable)</option>
+                            <option value="readonly">🔒 Public (Read-Only)</option>
+                            <option value="private">🛡️ Private (Restricted)</option>
+                        </select>
+                        <input class="form-check-input" type="checkbox" id="privateCheck" style="display: none;">
                         <button class="btn btn-primary btn-sm px-3 d-flex align-items-center gap-1 shadow-sm" onclick="uploadFile()">
                             <i class="bi bi-cloud-arrow-up-fill"></i> Upload
                         </button>
@@ -163,12 +163,12 @@
                         <thead>
                             <tr>
                                 <th style="min-width: 250px;">Name</th>
-                                <th style="width: 120px;">Type</th>
-                                <th style="width: 120px;">Size</th>
-                                <th style="width: 150px;">Uploaded By</th>
-                                <th style="width: 130px;">Visibility</th>
+                                <th style="width: 110px;">Type</th>
+                                <th style="width: 110px;">Size</th>
+                                <th style="width: 140px;">Uploaded By</th>
+                                <th style="width: 150px;">Access Modifier</th>
                                 <th style="width: 160px;">Modified</th>
-                                <th style="width: 180px;" class="text-end">Actions</th>
+                                <th style="width: 200px;" class="text-end">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="fileTableBody">
@@ -323,8 +323,70 @@
             </div>
         </div>
 
-        <!-- 4. BACKUPS TAB -->
+        <!-- 4. BACKUPS & HIGH AVAILABILITY TAB -->
         <div class="tab-pane fade" id="backup-tab">
+            <!-- Backup & Fallback Overview Metrics -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="nas-stat-card" style="--card-accent: #10b981;">
+                        <span class="text-secondary small fw-semibold text-uppercase tracking-wider">Latest Backup Date & Time</span>
+                        <h6 id="summaryLastBackupTime" class="fw-bold mt-2 mb-1 font-monospace text-success text-truncate">Loading...</h6>
+                        <small class="text-muted" id="summaryLastBackupRelative">Full Storage & DB</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="nas-stat-card" style="--card-accent: #0284c7;">
+                        <span class="text-secondary small fw-semibold text-uppercase tracking-wider">Next Automated Run</span>
+                        <h6 id="summaryNextBackupTime" class="fw-bold mt-2 mb-1 font-monospace text-primary text-truncate">Daily at 02:00</h6>
+                        <small class="text-muted" id="summarySchedStatus">Scheduler Active</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="nas-stat-card" style="--card-accent: #f59e0b;">
+                        <span class="text-secondary small fw-semibold text-uppercase tracking-wider">Stored Archives</span>
+                        <h4 id="summaryTotalArchives" class="fw-bold mt-1 mb-0 font-monospace text-dark">0</h4>
+                        <small class="text-muted" id="summaryTotalSize">0 MB Total Storage</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="nas-stat-card" style="--card-accent: #8b5cf6;">
+                        <span class="text-secondary small fw-semibold text-uppercase tracking-wider">HA Fallback Server</span>
+                        <h6 class="fw-bold mt-2 mb-1 text-purple d-flex align-items-center gap-1">
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1"><i class="bi bi-shield-check"></i> Hot Standby</span>
+                        </h6>
+                        <small class="text-muted">Port 5050 • Auto-Failover</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HA Fallback Server Banner Card -->
+            <div class="nas-card p-3 mb-4 border-primary border-opacity-25" style="background: rgba(37, 99, 235, 0.04);">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="nas-stat-icon" style="background: rgba(37, 99, 235, 0.12); color: #2563eb; width: 44px; height: 44px; font-size: 1.3rem;">
+                            <i class="bi bi-hdd-network-fill"></i>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <h6 class="fw-bold mb-0">High-Availability (HA) Backup Fallback Server</h6>
+                                <span class="badge bg-info-subtle text-info border border-info-subtle font-monospace px-2">Node :5050</span>
+                            </div>
+                            <small class="text-secondary">
+                                Automated failover watchdog actively monitors primary health via <code class="font-monospace">/api/health</code>. If primary goes down (3 missed pings), fallback automatically restores the newest backup and assumes active traffic.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a href="http://localhost:5050" target="_blank" class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1 shadow-sm">
+                            <i class="bi bi-box-arrow-up-right"></i> Open Fallback Dashboard
+                        </a>
+                        <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1" onclick="testFallbackSimulation()">
+                            <i class="bi bi-lightning-charge"></i> Simulate Failover Test
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div class="row g-3 mb-4">
                 <!-- Backup Scheduler Card -->
                 <div class="col-lg-7">
@@ -332,7 +394,7 @@
                         <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom border-light-subtle">
                             <div>
                                 <h5 class="fw-bold mb-1"><i class="bi bi-clock-history text-primary me-2"></i> Automatic Backup Scheduler</h5>
-                                <div class="text-muted small">Configure automated background backup tasks for storage and databases.</div>
+                                <div class="text-muted small">Configure automated background backup tasks with execution date and time tracking.</div>
                             </div>
                             <span id="scheduleStatusBadge" class="badge bg-secondary px-3 py-2">Disabled</span>
                         </div>
@@ -368,7 +430,7 @@
                             </div>
                         </div>
                         <div class="mt-3 pt-2 border-top border-light-subtle text-muted small" id="scheduleRunTimes">
-                            Last Run: <em>Never</em> | Next Run: <em>None</em>
+                            <i class="bi bi-clock me-1"></i> Last Run: <em>Never</em> | <i class="bi bi-calendar-event me-1"></i> Next Run: <em>None</em>
                         </div>
                     </div>
                 </div>
@@ -384,7 +446,7 @@
                                 <h5 class="fw-bold mb-0">System Data & DB Snapshot</h5>
                             </div>
                             <p class="text-secondary small mb-3">
-                                Creates a compressed <code class="font-monospace">.tar.gz</code> archive containing all NAS storage directory files, permissions, and a full MySQL database dump (<code class="font-monospace">nas_db_dump.sql</code>).
+                                Creates a compressed <code class="font-monospace">.tar.gz</code> archive containing all NAS storage directory files, permissions, and a full MySQL database dump (<code class="font-monospace">nas_db_dump.sql</code>) stamped with exact date and time.
                             </p>
                         </div>
                         <div>
@@ -400,7 +462,10 @@
             <!-- Backup Archives Table -->
             <div class="nas-card p-4">
                 <div class="d-flex justify-content-between mb-3 align-items-center">
-                    <h5 class="fw-bold mb-0"><i class="bi bi-archive-fill text-secondary me-2"></i> Stored Backup Archives</h5>
+                    <div>
+                        <h5 class="fw-bold mb-0"><i class="bi bi-archive-fill text-secondary me-2"></i> Stored Backup Archives</h5>
+                        <small class="text-secondary">Chronological history with exact date and time of creation</small>
+                    </div>
                     <button class="btn btn-outline-secondary btn-sm" onclick="fetchBackups()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
                 </div>
                 <div class="table-responsive">
@@ -410,8 +475,9 @@
                                 <th>Archive Name</th>
                                 <th>Size</th>
                                 <th>Status</th>
-                                <th>Created Timestamp</th>
-                                <th class="text-end">Action</th>
+                                <th><i class="bi bi-calendar3 text-primary me-1"></i> Backup Date</th>
+                                <th><i class="bi bi-clock text-secondary me-1"></i> Backup Time</th>
+                                <th class="text-end">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="backupTableBody"></tbody>
@@ -614,6 +680,55 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary px-3" onclick="submitRename()">Rename</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- File Access Modifier Modal -->
+<div class="modal fade" id="fileAccessModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold"><i class="bi bi-shield-lock text-primary me-2"></i> File Access Modifier</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="accessFilePath">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold text-secondary small">Target File / Folder</label>
+                    <div id="accessFileName" class="fw-bold font-monospace text-dark p-2 rounded border" style="background: rgba(0,0,0,0.03);"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold text-secondary small">Select Access Permission Level</label>
+                    <div class="d-flex flex-column gap-2">
+                        <div class="form-check p-3 border rounded" style="cursor: pointer;" onclick="document.getElementById('accessEditable').checked=true">
+                            <input class="form-check-input ms-0 me-2" type="radio" name="accessLevelRadio" id="accessEditable" value="editable">
+                            <label class="form-check-label fw-semibold text-dark" for="accessEditable">
+                                <span class="badge bg-success-subtle text-success border border-success-subtle me-1"><i class="bi bi-pencil-fill me-1"></i>Editable</span> (Public)
+                                <div class="text-secondary small fw-normal mt-1">Users with edit permissions can view, download, and edit this file inline.</div>
+                            </label>
+                        </div>
+                        <div class="form-check p-3 border rounded" style="cursor: pointer;" onclick="document.getElementById('accessReadonly').checked=true">
+                            <input class="form-check-input ms-0 me-2" type="radio" name="accessLevelRadio" id="accessReadonly" value="readonly">
+                            <label class="form-check-label fw-semibold text-dark" for="accessReadonly">
+                                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle me-1"><i class="bi bi-lock-fill me-1"></i>Read-Only</span> (Locked)
+                                <div class="text-secondary small fw-normal mt-1">Anyone can view and download, but inline modifications are locked.</div>
+                            </label>
+                        </div>
+                        <div class="form-check p-3 border rounded" style="cursor: pointer;" onclick="document.getElementById('accessPrivate').checked=true">
+                            <input class="form-check-input ms-0 me-2" type="radio" name="accessLevelRadio" id="accessPrivate" value="private">
+                            <label class="form-check-label fw-semibold text-dark" for="accessPrivate">
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle me-1"><i class="bi bi-shield-lock-fill me-1"></i>Private</span> (Restricted)
+                                <div class="text-secondary small fw-normal mt-1">Strictly hidden from all users except your account and Administrator.</div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary px-3" onclick="submitFileAccess()">Save Permissions</button>
             </div>
         </div>
     </div>

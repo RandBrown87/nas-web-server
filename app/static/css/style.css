@@ -4,27 +4,24 @@
    ============================================================================== */
 
 :root {
-    --nas-primary: #0284c7;
-    --nas-primary-hover: #0369a1;
-    --nas-primary-light: #e0f2fe;
-    --nas-primary-glow: rgba(2, 132, 199, 0.35);
+    --nas-primary: #2563eb;
+    --nas-primary-hover: #1d4ed8;
+    --nas-primary-light: #eff6ff;
+    --nas-primary-glow: rgba(37, 99, 235, 0.2);
 
-    --nas-dark-bg: #0b1120;
-    --nas-dark-surface: #0f172a;
-    --nas-dark-card: #1e293b;
-    --nas-dark-border: rgba(255, 255, 255, 0.08);
+    --nas-dark-bg: #0f1117;
+    --nas-dark-surface: #171a22;
+    --nas-dark-card: #1c202a;
+    --nas-dark-border: #262b38;
 
     --nas-light-bg: #f8fafc;
     --nas-light-card: #ffffff;
     --nas-light-border: #e2e8f0;
 
     --nas-emerald: #10b981;
-    --nas-emerald-glow: rgba(16, 185, 129, 0.3);
     --nas-amber: #f59e0b;
-    --nas-amber-glow: rgba(245, 158, 11, 0.3);
     --nas-crimson: #ef4444;
-    --nas-crimson-glow: rgba(239, 68, 68, 0.35);
-    --nas-cyan: #06b6d4;
+    --nas-cyan: #0ea5e9;
 
     --nas-font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --nas-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -34,13 +31,11 @@
 body.nas-app {
     font-family: var(--nas-font-sans);
     background-color: var(--nas-light-bg);
-    background-image: 
-        radial-gradient(at 0% 0%, rgba(2, 132, 199, 0.04) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
     color: #1e293b;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Custom Scrollbars */
@@ -746,26 +741,29 @@ body.nas-app {
 }
 
 /* ==============================================================================
-   14. DARK THEME OVERRIDES ([data-theme="dark"])
+   14. SOOTHING DARK THEME OVERRIDES ([data-theme="dark"])
+   Calm, restful matte zinc/slate tones; zero eye-strain, no neon gradients
    ============================================================================== */
 [data-theme="dark"] body.nas-app {
     background-color: var(--nas-dark-bg);
-    background-image: 
-        radial-gradient(at 0% 0%, rgba(2, 132, 199, 0.08) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.06) 0px, transparent 50%);
     color: #e2e8f0;
+}
+
+[data-theme="dark"] .nas-navbar {
+    background: rgba(20, 23, 31, 0.95);
+    border-bottom-color: #262b38;
 }
 
 [data-theme="dark"] .nas-card,
 [data-theme="dark"] .nas-stat-card {
-    background: #0f172a;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: #171a22;
+    border-color: #262b38;
     color: #f1f5f9;
 }
 
 [data-theme="dark"] .nas-nav-pills {
-    background: #0f172a;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: #171a22;
+    border-color: #262b38;
 }
 
 [data-theme="dark"] .nas-nav-pills .nav-link {
@@ -773,27 +771,32 @@ body.nas-app {
 }
 
 [data-theme="dark"] .nas-nav-pills .nav-link:hover {
-    color: #38bdf8;
+    color: #60a5fa;
     background: rgba(255, 255, 255, 0.04);
 }
 
+[data-theme="dark"] .nas-nav-pills .nav-link.active {
+    background: #2563eb;
+    color: #ffffff;
+}
+
 [data-theme="dark"] .breadcrumb-container {
-    background: #0b1120;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: #13161f;
+    border-color: #262b38;
 }
 
 [data-theme="dark"] .nas-table thead th {
-    background: #0b1120;
+    background: #13161f;
     color: #94a3b8;
-    border-bottom-color: rgba(255, 255, 255, 0.08);
+    border-bottom-color: #262b38;
 }
 
 [data-theme="dark"] .nas-table tbody tr:hover {
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: #1b1f28;
 }
 
 [data-theme="dark"] .nas-table tbody td {
-    border-bottom-color: rgba(255, 255, 255, 0.05);
+    border-bottom-color: #212532;
     color: #cbd5e1;
 }
 
@@ -807,37 +810,113 @@ body.nas-app {
 }
 
 [data-theme="dark"] .search-input-group input {
-    background: #0b1120;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
+    background: #13161f;
+    border-color: #262b38;
+    color: #f1f5f9;
 }
 
 [data-theme="dark"] .search-input-group input:focus {
-    background: #0b1120;
-    color: #ffffff;
-    border-color: #38bdf8;
+    background: #13161f;
+    color: #f1f5f9;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .search-input-group .input-group-text {
+    background: #13161f;
+    border-color: #262b38;
+    color: #94a3b8;
 }
 
 [data-theme="dark"] .modal-content {
-    background: #0f172a;
-    border-color: rgba(255, 255, 255, 0.1);
+    background: #171a22;
+    border-color: #262b38;
     color: #f1f5f9;
 }
 
 [data-theme="dark"] .modal-header,
 [data-theme="dark"] .modal-footer {
-    background: #0b1120;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: #13161f;
+    border-color: #262b38;
 }
 
 [data-theme="dark"] .modal .form-control,
 [data-theme="dark"] .modal .form-select {
-    background: #090d16;
-    border-color: rgba(255, 255, 255, 0.12);
+    background: #101319;
+    border-color: #282e3c;
     color: #f8fafc;
 }
 
+[data-theme="dark"] .modal .form-control:focus,
+[data-theme="dark"] .modal .form-select:focus {
+    background: #101319;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
 [data-theme="dark"] .storage-spectrum-bar {
-    background: #1e293b;
+    background: #252a36;
+}
+
+[data-theme="dark"] .badge.bg-light {
+    background: #202532 !important;
+    color: #cbd5e1 !important;
+    border-color: #2d3342 !important;
+}
+
+[data-theme="dark"] .badge.bg-success-subtle {
+    background: rgba(16, 185, 129, 0.15) !important;
+    color: #34d399 !important;
+    border-color: rgba(16, 185, 129, 0.25) !important;
+}
+
+[data-theme="dark"] .badge.bg-danger-subtle {
+    background: rgba(239, 68, 68, 0.15) !important;
+    color: #f87171 !important;
+    border-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+[data-theme="dark"] .badge.bg-warning-subtle {
+    background: rgba(245, 158, 11, 0.15) !important;
+    color: #fbbf24 !important;
+    border-color: rgba(245, 158, 11, 0.25) !important;
+}
+
+[data-theme="dark"] .badge.bg-info-subtle {
+    background: rgba(14, 165, 233, 0.15) !important;
+    color: #38bdf8 !important;
+    border-color: rgba(14, 165, 233, 0.25) !important;
+}
+
+[data-theme="dark"] .badge.bg-secondary-subtle {
+    background: rgba(148, 163, 184, 0.15) !important;
+    color: #94a3b8 !important;
+    border-color: rgba(148, 163, 184, 0.25) !important;
+}
+
+[data-theme="dark"] .preview-theatre {
+    background: #141720;
+    border-color: #262b38;
+}
+
+[data-theme="dark"] .preview-media-canvas {
+    background: #0d0f14;
+}
+
+[data-theme="dark"] .terminal-window {
+    border-color: #262b38;
+}
+
+[data-theme="dark"] .terminal-header {
+    background: #13161f;
+    border-bottom-color: #262b38;
+}
+
+[data-theme="dark"] .log-box {
+    background: #0d0f14;
+}
+
+[data-theme="dark"] .file-row-name {
+    color: #f1f5f9 !important;
 }
 
