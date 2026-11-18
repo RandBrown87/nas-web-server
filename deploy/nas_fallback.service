@@ -1,0 +1,22 @@
+[Unit]
+Description=NAS Fallback High-Availability Server Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/nas-web-server
+Environment="PATH=/var/www/nas-web-server/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="NAS_PRIMARY_URL=http://127.0.0.1:5000"
+Environment="NAS_FALLBACK_PORT=5050"
+Environment="NAS_HEARTBEAT_INTERVAL=5"
+Environment="NAS_FAILOVER_THRESHOLD=3"
+ExecStart=/var/www/nas-web-server/venv/bin/python fallback_server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

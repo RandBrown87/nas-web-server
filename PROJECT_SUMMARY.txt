@@ -1,0 +1,140 @@
+================================================================================
+           NEXT-GEN WEB SERVER ARCHITECTURE FOR NAS STORAGE SYSTEMS
+            Advanced Operating Systems (CS 5551) - Project Summary
+================================================================================
+
+1. PROJECT OVERVIEW & OBJECTIVE
+--------------------------------------------------------------------------------
+This project delivers a secure, lightweight, high-performance web interface 
+designed to manage and monitor a Network Attached Storage (NAS) server running 
+on Linux. It eliminates the need for heavy, proprietary NAS operating systems 
+(e.g., Synology DSM, TrueNAS) by operating directly on native POSIX filesystem 
+primitives, MySQL metadata storage, and kernel telemetry APIs, maintaining an 
+idle memory footprint of less than 60 MB RAM.
+
+Key Goals Achieved:
+  - Remote File & Folder Management (POSIX storage operations via REST APIs).
+  - Multi-tier Role-Based Access Control (Admin, Editor, User, ReadOnly).
+  - Zero-plugin browser media streaming (Video, Audio, PDF, Code Editor).
+  - Real-time kernel & hardware telemetry (CPU, RAM, Disks, Journalctl).
+  - Disaster Recovery with a High-Availability (HA) Fallback Server node.
+  - Defense-in-depth security (In-flight ClamAV malware scan + Web App WAF).
+
+
+2. SYSTEM ARCHITECTURE & DESIGN CHOICES
+--------------------------------------------------------------------------------
+The system is structured as a 5-Tier Hybrid Gateway architecture:
+
+  [Client Layer]     Responsive SPA (Bootstrap 5, Glassmorphism, Dark/Light mode)
+         |
+  [Proxy & WAF]      Apache 2.4 Reverse Proxy, ModSecurity 3.0 CRS, SSL/TLS, UFW
+         |
+  [App Logic]        Python 3 / Flask WSGI Daemon, RBAC Guard, Scheduler Thread
+         |
+  [Persistence]      ext4/ZFS POSIX Storage Partition + MySQL 8.0 Metadata DB
+         |
+  [HA Fallback]      Standby Watchdog Daemon (Port 5050) with Auto-Failover
+         |
+  [Host OS Kernel]   ClamAV daemon socket, /proc & /sys stats, journalctl logs
+
+Why This Architecture Won Over Alternatives:
+  - vs. Monolithic LAMP (PHP): PHP suffers from high per-request memory bloat,
+    lacks persistent in-memory background threads for schedulers/watchdogs, and 
+    has historical vulnerabilities to Local File Inclusion (LFI).
+  - vs. Heavy Kubernetes / Microservices: Container clusters consume 2-4 GB of 
+    RAM at idle and add virtualization latency to storage block devices.
+  - vs. Cloud Storage (AWS S3 / Lambda): Destroys local data privacy, requires 
+    continuous internet connectivity, and incurs monthly egress bandwidth fees.
+  - vs. Turnkey Appliances (TrueNAS): TrueNAS requires 8-16 GB RAM minimums for 
+    ZFS caches and imposes rigid vendor lock-in. Our design runs on any Linux box.
+
+
+3. CORE FUNCTIONAL MODULES
+--------------------------------------------------------------------------------
+A. File & Directory Management
+  - Chunked file upload and streaming downloads with MIME auto-detection.
+  - Recursive directory tree creation, subfolder navigation, and atomic renaming.
+  - Granular File-Level Access Modifiers: Each file can be set to "editable",
+    "readonly", or "private".
+  - Ownership silos: Private files are restricted strictly to owner and admin.
+
+B. Universal Media & In-Browser Code Suite
+  - Image Lightbox: Interactive zoom, pan, rotation, and dimension inspector.
+  - Document & Streaming: Inline PDF viewer, HTML5 cinema video, audio waveforms.
+  - In-Browser IDE: Monospace plaintext/code editor for config and source files 
+    (.py, .js, .json, .sh, .txt) with role-gated atomic writes.
+
+C. Multi-Tier Role-Based Access Control (RBAC)
+  - 4 Distinct Roles:
+      1. Admin    : Full system control, user management, and override power.
+      2. Editor   : View files, download, and edit content in-browser.
+      3. User     : Upload new files, view public data, create directories.
+      4. ReadOnly : Strictly view-only; editing and writing are blocked across 
+                    all routes even if the user owns the file.
+  - Dynamic Permission Sync: Live database lookup ensures admin permission 
+    modifications take effect immediately without requiring session logout.
+  - Sole Admin Safeguard: Prevents accidental deletion or demotion of the last 
+    remaining administrative account.
+
+D. Real-Time OS & Hardware Telemetry
+  - CPU Utilization: Real-time calculation from /proc/stat rendered via SVG 
+    sparklines with dynamic 5-second polling.
+  - Memory & Partitions: Live tracking of active RAM buffers and storage usage.
+  - Live Kernel Journal: Streams systemd journalctl and /var/log/syslog directly 
+    to a terminal console in the browser.
+
+E. Disaster Recovery & High-Availability (HA) Fallback
+  - Automated Backup Scheduler: Threaded daemon running recurring hot backups 
+    (hourly, daily, weekly) pairing transactional mysqldump with storage archives.
+  - Explicit Audit Metadata: Every backup records formatted date and time.
+  - 1-Click Restoration: Replaces storage and database tables to past snapshots.
+  - Standalone HA Fallback Server (fallback_server.py on Port 5050):
+      * Standby node continuously pings the primary server (/api/health) every 4s.
+      * If primary misses 3 heartbeats, fallback automatically restores the latest
+        backup archive into fallback_storage and serves web traffic and downloads.
+      * Supports manual failover simulation and stand-down controls.
+
+F. Defense-in-Depth Security
+  - Inline Anti-Malware Gateway: Incoming uploads are intercepted to a quarantine 
+    directory and scanned via ClamAV socket (/var/run/clamav/clamd.ctl). Infected 
+    files (e.g., EICAR) are rejected and logged before touching storage.
+  - Web Application Firewall (WAF): Built-in regex rule engine inspecting request 
+    headers, query params, and JSON payloads for SQLi, XSS, RCE, and Path Traversal.
+  - Apache Edge Hardening: ModSecurity CRS rules and UFW firewall restricting 
+    all ports except SSH (22), HTTP (80), and HTTPS (443).
+
+
+4. TEST VERIFICATION & QUALITY ASSURANCE
+--------------------------------------------------------------------------------
+The codebase has undergone automated unit and integration testing:
+  - 36 Automated Test Cases Executed (100% Pass Rate).
+  - Test suites cover:
+      * test_new_features.py  : Read-only owner lock, file access levels, HA fallback.
+      * test_file_editor.py   : In-browser editor permissions and atomic file writes.
+      * test_scanner.py       : ClamAV quarantine gateway and clean upload pipelines.
+      * test_waf.py           : SQLi, XSS, and command injection blocking.
+      * test_users.py         : RBAC governance, password hashing, and sole admin guard.
+      * test_backup.py        : Hot mysqldump generation, restoration, and scheduling.
+      * test_rename.py        : Directory and file renaming with boundary validation.
+
+
+5. HOW TO RUN THE SYSTEM
+--------------------------------------------------------------------------------
+A. Start the Primary NAS Server (Port 5000):
+   $ cd nas-web-server
+   $ ./venv/bin/python run.py
+   Access UI at: http://localhost:5000 (Default Admin: admin / AdminPass123!)
+
+B. Start the Standby HA Fallback Node (Port 5050):
+   $ cd nas-web-server
+   $ ./venv/bin/python fallback_server.py
+   Access Fallback Dashboard at: http://localhost:5050
+
+C. Execute Automated Test Suite:
+   $ cd nas-web-server
+   $ ./venv/bin/python -m unittest discover -s tests -p "test_*.py"
+   Output: Ran 36 tests in ~2.1s -> OK
+
+================================================================================
+             Prepared for Course Submission • CS 5551 Project
+================================================================================

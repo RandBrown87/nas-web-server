@@ -17,6 +17,52 @@ def safe_path(relative_path=""):
         raise ValueError("Directory Traversal Blocked")
     return target
 
+def get_user_effective_permissions(user_id=None):
+    uid = user_id or session.get('user_id')
+    fallback = {
+        'role_name': session.get('role_name', 'user'),
+        'is_admin': bool(session.get('is_admin', False)),
+        'can_read': bool(session.get('can_read', True)),
+        'can_write': bool(session.get('can_write', False)),
+        'can_edit': bool(session.get('can_edit', False)),
+        'can_delete': bool(session.get('can_delete', False))
+    }
+    if not uid:
+        return {'role_name': 'anonymous', 'is_admin': False, 'can_read': False, 'can_write': False, 'can_edit': False, 'can_delete': False}
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        cursor.execute("""
+            SELECT r.name as role_name, r.can_read, r.can_write, r.can_edit, r.can_delete, r.is_admin
+            FROM users u
+            JOIN roles r ON u.role_id = r.id
+            WHERE u.id = %s
+        """, (uid,))
+        r = cursor.fetchone()
+        cursor.fetchall()
+        cursor.close()
+        conn.close()
+    except Exception:
+        return fallback
+
+    if not r:
+        return fallback
+
+    perms = {
+        'role_name': r['role_name'],
+        'is_admin': bool(r['is_admin']),
+        'can_read': bool(r['can_read']),
+        'can_write': bool(r['can_write'] or r['is_admin']),
+        'can_edit': bool(r['can_edit'] or r['is_admin']),
+        'can_delete': bool(r['can_delete'] or r['is_admin'])
+    }
+    if uid == session.get('user_id'):
+        session['is_admin'] = perms['is_admin']
+        session['can_write'] = perms['can_write']
+        session['can_edit'] = perms['can_edit']
+        session['can_delete'] = perms['can_delete']
+    return perms
+
 @files_bp.route('/')
 @login_required
 def index():
@@ -42,7 +88,7 @@ def list_files():
             cursor = conn.cursor(dictionary=True)
             placeholders = ', '.join(['%s'] * len(paths))
             cursor.execute(f"""
-                SELECT f.file_path, f.filename, f.uploaded_by, f.is_private, u.username as uploader_name
+                SELECT f.file_path, f.filename, f.uploaded_by, f.is_private, f.access_level, u.username as uploader_name
                 FROM file_metadata f
                 LEFT JOIN users u ON f.uploaded_by = u.id
                 WHERE f.file_path IN ({placeholders})
@@ -53,6 +99,7 @@ def list_files():
             conn.close()
 
         current_user_id = session.get('user_id')
+        is_admin_user = session.get('is_admin')
 
         for entry in entries:
             abs_path = os.path.abspath(entry.path)
@@ -60,11 +107,14 @@ def list_files():
             uploaded_by = meta['uploaded_by'] if meta else None
             uploader_name = meta['uploader_name'] if (meta and meta['uploader_name']) else ('Admin' if uploaded_by == 1 else 'System')
             is_private = bool(meta['is_private']) if meta else False
+            access_lvl = meta.get('access_level') if (meta and meta.get('access_level')) else ('private' if is_private else 'editable')
             is_uploader = (uploaded_by is not None and uploaded_by == current_user_id)
 
-            # Private files are strictly visible ONLY to the user that uploaded them
-            if is_private and not is_uploader:
+            # Private files are strictly visible ONLY to the user that uploaded them or an admin
+            if is_private and not is_uploader and not is_admin_user:
                 continue
+
+            can_manage = bool(is_uploader or is_admin_user)
 
             items.append({
                 'name': entry.name,
@@ -74,7 +124,9 @@ def list_files():
                 'uploader': uploader_name,
                 'uploaded_by': uploaded_by,
                 'is_private': is_private,
-                'can_toggle': bool(is_uploader)
+                'access_level': access_lvl,
+                'can_toggle': can_manage,
+                'can_change_access': can_manage
             })
 
     return jsonify({'current_path': req_path, 'items': items})
@@ -90,7 +142,12 @@ def upload():
     if not file or not file.filename:
         return jsonify({'error': 'No file uploaded'}), 400
 
-    is_private = request.form.get('is_private', 'false').lower() in ['true', '1', 'yes', 'on']
+    access_level = request.form.get('access_level', 'editable')
+    if access_level not in ['editable', 'readonly', 'private']:
+        access_level = 'editable'
+    if request.form.get('is_private', 'false').lower() in ['true', '1', 'yes', 'on']:
+        access_level = 'private'
+    is_private = (access_level == 'private')
 
     filename = secure_filename(file.filename)
     dest = os.path.join(safe_path(req_path), filename)
@@ -98,15 +155,21 @@ def upload():
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_dest,))
+    cursor.execute("SELECT id, uploaded_by, is_private, access_level FROM file_metadata WHERE file_path = %s", (abs_dest,))
     existing = cursor.fetchone()
     cursor.fetchall()
 
-    # If file exists and is private, only the original uploader can overwrite it
-    if existing and existing.get('is_private') and existing.get('uploaded_by') != session['user_id']:
+    # If file exists and is private, only the original uploader or admin can overwrite it
+    if existing and existing.get('is_private') and existing.get('uploaded_by') != session['user_id'] and not session.get('is_admin'):
         cursor.close()
         conn.close()
         return jsonify({'error': 'A private file already exists with this name'}), 403
+
+    # If file exists and is marked readonly, only admin can overwrite it
+    if existing and existing.get('access_level') == 'readonly' and not session.get('is_admin'):
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'This file is marked as Read-Only. Overwriting is locked.'}), 403
 
     # Stage upload in Quarantine folder first for Antivirus scanning
     os.makedirs(Config.QUARANTINE_DIR, exist_ok=True)
@@ -160,19 +223,66 @@ def upload():
 
     if existing:
         cursor.execute(
-            "UPDATE file_metadata SET filename = %s, file_size = %s, uploaded_by = %s, is_private = %s, uploaded_at = CURRENT_TIMESTAMP WHERE id = %s",
-            (filename, os.path.getsize(dest), session['user_id'], is_private, existing['id'])
+            "UPDATE file_metadata SET filename = %s, file_size = %s, uploaded_by = %s, is_private = %s, access_level = %s, uploaded_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (filename, os.path.getsize(dest), session['user_id'], is_private, access_level, existing['id'])
         )
     else:
         cursor.execute(
-            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by, is_private) VALUES (%s, %s, %s, %s, %s)",
-            (filename, abs_dest, os.path.getsize(dest), session['user_id'], is_private)
+            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by, is_private, access_level) VALUES (%s, %s, %s, %s, %s, %s)",
+            (filename, abs_dest, os.path.getsize(dest), session['user_id'], is_private, access_level)
         )
     conn.commit()
     cursor.close()
     conn.close()
 
-    return jsonify({'success': True, 'filename': filename, 'is_private': is_private, 'scan_result': 'clean'})
+    return jsonify({'success': True, 'filename': filename, 'is_private': is_private, 'access_level': access_level, 'scan_result': 'clean'})
+
+@files_bp.route('/api/files/access', methods=['POST'])
+@login_required
+def change_file_access():
+    data = request.json or {}
+    req_path = data.get('path', '')
+    new_access = data.get('access_level', 'editable')
+    if new_access not in ['editable', 'readonly', 'private']:
+        return jsonify({'error': 'Invalid access level. Allowed: editable, readonly, private'}), 400
+
+    try:
+        target = safe_path(req_path)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    abs_target = os.path.abspath(target)
+    base_name = os.path.basename(target)
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT id, uploaded_by, is_private, access_level FROM file_metadata WHERE file_path = %s OR file_path = %s OR filename = %s ORDER BY id DESC LIMIT 1", (abs_target, base_name, base_name))
+    meta = cursor.fetchone()
+    cursor.fetchall()
+
+    current_user_id = session.get('user_id')
+    is_admin = session.get('is_admin')
+    is_owner = (meta and meta['uploaded_by'] == current_user_id)
+
+    if not is_admin and not is_owner:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Permission denied: only file owner or administrator can modify access permissions'}), 403
+
+    is_private_val = (new_access == 'private')
+    if meta:
+        cursor.execute(
+            "UPDATE file_metadata SET access_level = %s, is_private = %s WHERE id = %s",
+            (new_access, is_private_val, meta['id'])
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by, is_private, access_level) VALUES (%s, %s, %s, %s, %s, %s)",
+            (os.path.basename(target), abs_target, os.path.getsize(target) if os.path.isfile(target) else 0, current_user_id, is_private_val, new_access)
+        )
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'success': True, 'access_level': new_access, 'is_private': is_private_val})
 
 @files_bp.route('/api/files/visibility', methods=['POST'])
 @login_required
@@ -185,9 +295,10 @@ def toggle_visibility():
         return jsonify({'error': 'Invalid path'}), 400
 
     abs_target = os.path.abspath(target)
+    base_name = os.path.basename(target)
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_target,))
+    cursor.execute("SELECT id, uploaded_by, is_private, access_level FROM file_metadata WHERE file_path = %s OR file_path = %s OR filename = %s ORDER BY id DESC LIMIT 1", (abs_target, base_name, base_name))
     meta = cursor.fetchone()
     cursor.fetchall()
 
@@ -196,18 +307,20 @@ def toggle_visibility():
         conn.close()
         return jsonify({'error': 'File not found or not owned by user'}), 404
 
-    # Permission check: ONLY the user who uploaded the file can change visibility
-    if meta['uploaded_by'] != session.get('user_id'):
+    current_user_id = session.get('user_id')
+    is_admin = session.get('is_admin')
+    if meta['uploaded_by'] != current_user_id and not is_admin:
         cursor.close()
         conn.close()
-        return jsonify({'error': 'Permission denied: only the user who uploaded this file can change its visibility'}), 403
+        return jsonify({'error': 'Permission denied: only the user who uploaded this file or an admin can change its visibility'}), 403
 
     new_state = not bool(meta['is_private']) if 'is_private' not in data else bool(data['is_private'])
-    cursor.execute("UPDATE file_metadata SET is_private = %s WHERE id = %s", (new_state, meta['id']))
+    new_access = 'private' if new_state else 'editable'
+    cursor.execute("UPDATE file_metadata SET is_private = %s, access_level = %s WHERE id = %s", (new_state, new_access, meta['id']))
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({'success': True, 'is_private': new_state})
+    return jsonify({'success': True, 'is_private': new_state, 'access_level': new_access})
 
 @files_bp.route('/api/download')
 @login_required
@@ -229,9 +342,9 @@ def download():
     cursor.close()
     conn.close()
 
-    # Private files can strictly ONLY be downloaded by the user who uploaded them
+    # Private files can strictly ONLY be downloaded by the user who uploaded them or an admin
     if meta and meta.get('is_private'):
-        if meta.get('uploaded_by') != session.get('user_id'):
+        if meta.get('uploaded_by') != session.get('user_id') and not session.get('is_admin'):
             return jsonify({'error': 'Access denied: private file'}), 403
 
     return send_file(path, as_attachment=True)
@@ -250,15 +363,15 @@ def preview():
     abs_path = os.path.abspath(path)
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    cursor.execute("SELECT uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_path,))
+    cursor.execute("SELECT uploaded_by, is_private, access_level FROM file_metadata WHERE file_path = %s", (abs_path,))
     meta = cursor.fetchone()
     cursor.fetchall()
     cursor.close()
     conn.close()
 
-    # Private files can strictly ONLY be previewed by the user who uploaded them
+    # Private files can strictly ONLY be previewed by the user who uploaded them or an admin
     if meta and meta.get('is_private'):
-        if meta.get('uploaded_by') != session.get('user_id'):
+        if meta.get('uploaded_by') != session.get('user_id') and not session.get('is_admin'):
             return jsonify({'error': 'Access denied: private file'}), 403
 
     import mimetypes
@@ -438,6 +551,8 @@ def rename_item():
 @files_bp.route('/api/file/content', methods=['GET', 'POST'])
 @login_required
 def file_content():
+    perms = get_user_effective_permissions()
+
     if request.method == 'GET':
         req_path = request.args.get('path', '')
         try:
@@ -449,16 +564,22 @@ def file_content():
             return jsonify({'error': 'File not found'}), 404
 
         abs_target = os.path.abspath(target)
+        base_name = os.path.basename(target)
         conn = get_db()
         cursor = conn.cursor(dictionary=True, buffered=True)
-        cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_target,))
+        cursor.execute("SELECT id, uploaded_by, is_private, access_level FROM file_metadata WHERE file_path = %s OR file_path = %s OR filename = %s ORDER BY id DESC LIMIT 1", (abs_target, base_name, base_name))
         meta = cursor.fetchone()
         cursor.fetchall()
         cursor.close()
         conn.close()
 
-        is_owner = (meta and meta['uploaded_by'] == session.get('user_id'))
-        if meta and meta.get('is_private') and not is_owner:
+        current_uid = session.get('user_id')
+        is_owner = (meta and meta['uploaded_by'] == current_uid)
+        is_private = bool(meta and meta.get('is_private'))
+        file_access = meta.get('access_level') if (meta and meta.get('access_level')) else ('private' if is_private else 'editable')
+
+        # Private files: visible strictly to uploader or admin
+        if is_private and not is_owner and not perms['is_admin']:
             return jsonify({'error': 'Access denied: private file'}), 403
 
         if os.path.getsize(target) > 5 * 1024 * 1024:
@@ -470,12 +591,27 @@ def file_content():
         except Exception as e:
             return jsonify({'error': f'Cannot read file: {str(e)}'}), 500
 
-        can_edit = bool(session.get('can_edit') or session.get('is_admin') or is_owner)
+        # Permission evaluation:
+        # 1. User account must have edit privileges (admin, editor, or user with can_edit=True).
+        #    If user account is set to read-only, it can NEVER edit any file (even owned).
+        # 2. If the file is marked as 'readonly', it is locked from editing for non-admins.
+        if not perms['can_edit']:
+            can_edit = False
+            lock_reason = 'Your account has Read-Only permissions'
+        elif file_access == 'readonly' and not perms['is_admin']:
+            can_edit = False
+            lock_reason = 'This file is marked as Read-Only'
+        else:
+            can_edit = True
+            lock_reason = ''
+
         return jsonify({
             'path': req_path,
             'filename': os.path.basename(target),
             'content': content,
-            'can_edit': can_edit
+            'can_edit': can_edit,
+            'access_level': file_access,
+            'lock_reason': lock_reason
         })
 
     data = request.json or {}
@@ -491,22 +627,34 @@ def file_content():
         return jsonify({'error': 'File not found'}), 404
 
     abs_target = os.path.abspath(target)
+    base_name = os.path.basename(target)
     conn = get_db()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    cursor.execute("SELECT id, uploaded_by, is_private FROM file_metadata WHERE file_path = %s", (abs_target,))
+    cursor.execute("SELECT id, uploaded_by, is_private, access_level FROM file_metadata WHERE file_path = %s OR file_path = %s OR filename = %s ORDER BY id DESC LIMIT 1", (abs_target, base_name, base_name))
     meta = cursor.fetchone()
     cursor.fetchall()
 
-    is_owner = (meta and meta['uploaded_by'] == session.get('user_id'))
-    if meta and meta.get('is_private') and not is_owner:
+    current_uid = session.get('user_id')
+    is_owner = (meta and meta['uploaded_by'] == current_uid)
+    is_private = bool(meta and meta.get('is_private'))
+    file_access = meta.get('access_level') if (meta and meta.get('access_level')) else ('private' if is_private else 'editable')
+
+    if is_private and not is_owner and not perms['is_admin']:
         cursor.close()
         conn.close()
         return jsonify({'error': 'Access denied: private file'}), 403
 
-    if not session.get('can_edit') and not session.get('is_admin') and not is_owner:
+    # Enforce user role permission: Read-only accounts CANNOT edit any file under any condition!
+    if not perms['can_edit'] and not perms['is_admin']:
         cursor.close()
         conn.close()
-        return jsonify({'error': 'Edit permission required'}), 403
+        return jsonify({'error': 'Edit permission denied: your user account has read-only access'}), 403
+
+    # Enforce file-level permission: Read-only files are locked from editing for non-admins!
+    if file_access == 'readonly' and not perms['is_admin']:
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'This file is marked as Read-Only. Editing is locked.'}), 403
 
     try:
         with open(target, 'w', encoding='utf-8') as f:
@@ -521,13 +669,13 @@ def file_content():
         cursor.execute("UPDATE file_metadata SET file_size = %s WHERE id = %s", (new_size, meta['id']))
     else:
         cursor.execute(
-            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by) VALUES (%s, %s, %s, %s)",
-            (os.path.basename(target), abs_target, new_size, session.get('user_id'))
+            "INSERT INTO file_metadata (filename, file_path, file_size, uploaded_by, is_private, access_level) VALUES (%s, %s, %s, %s, %s, %s)",
+            (os.path.basename(target), abs_target, new_size, current_uid, False, 'editable')
         )
     conn.commit()
     cursor.close()
     conn.close()
 
-    return jsonify({'success': True, 'file_size': new_size})
+    return jsonify({'success': True, 'file_size': new_size, 'access_level': file_access})
 
 
